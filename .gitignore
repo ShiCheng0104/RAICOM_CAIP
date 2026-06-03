@@ -1,0 +1,30 @@
+# Local environments
+/.conda/
+/.venv/
+/venv/
+/env/
+__pycache__/
+*.py[cod]
+
+# Docker/local runtime
+/.docker-empty/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Large or local-only project assets
+/data/
+/models/
+/RAICOM_CAIP/
+
+# Logs and temporary files
+*.log
+*.err
+*.tmp
+*.bak
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,182 @@
+services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: fraudsim-kafka
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    container_name: fraudsim-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  model-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraudsim-model-api
+    ports:
+      - "8000:8000"
+    environment:
+      FRAUDSIM_MODEL_PATH: /app/models/lightgbm/latest
+      FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+    volumes:
+      - ./models:/app/models
+      - ./data/processed:/app/data/processed:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  flink-jobmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    container_name: fraudsim-flink-jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  flink-taskmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    container_name: fraudsim-flink-taskmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+
+  flink-risk-job:
+    build:
+      context: .
+      dockerfile: Dockerfile.flink
+    container_name: fraudsim-flink-risk-job
+    command: >
+      bash -lc "sleep 20 &&
+      flink run -m flink-jobmanager:8081 -py /app/fraudsim/streaming/flink_job.py"
+    environment:
+      FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
+      FRAUDSIM_TOPIC_IN: transaction_events
+      FRAUDSIM_TOPIC_RISK: risk_results
+      FRAUDSIM_TOPIC_ALERT: alert_events
+      FRAUDSIM_TOPIC_LATE: late_events
+      FRAUDSIM_API_URL: http://model-api:8000
+      FRAUDSIM_REDIS_URL: redis://redis:6379/0
+      FRAUDSIM_FLINK_CHECKPOINT_MS: 60000
+      FRAUDSIM_WATERMARK_SECONDS: 60
+      FRAUDSIM_FLINK_PARALLELISM: 2
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      flink-taskmanager:
+        condition: service_started
+      model-api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    command: python -m fraudsim.training.train --dataset fp_fraudsim_injected --model lightgbm
+    environment:
+      FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+    volumes:
+      - ./models:/app/models
+      - ./data/processed:/app/data/processed:ro
+
+  load-profiles:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    command: python -m fraudsim.streaming.load_profiles --dataset fp_fraudsim_injected
+    environment:
+      FRAUDSIM_REDIS_URL: redis://redis:6379/0
+      FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+    volumes:
+      - ./data/processed:/app/data/processed:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    command: python -m fraudsim.streaming.producer --dataset fp_fraudsim_injected --rate 100
+    environment:
+      FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
+      FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+    volumes:
+      - ./data/processed:/app/data/processed:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  batch-risk-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    command: >
+      python -m fraudsim.streaming.batch_risk_worker
+      --risk-topic risk_results_batch
+      --batch-size 100
+      --linger-ms 500
+    environment:
+      FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
+      FRAUDSIM_REDIS_URL: redis://redis:6379/0
+      FRAUDSIM_API_URL: http://model-api:8000
+      FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      model-api:
+        condition: service_healthy

@@ -1,0 +1,28 @@
+dataset:
+  name: fp_fraudsim_injected
+  root: data/processed
+
+kafka:
+  bootstrap_servers: kafka:9092
+
+topics:
+  transaction_events: transaction_events
+  risk_results: risk_results
+  risk_results_batch: risk_results_batch
+  alert_events: alert_events
+  feedback_events: feedback_events
+  late_events: late_events
+
+redis:
+  url: redis://redis:6379/0
+
+model:
+  active: lightgbm
+  path: models/lightgbm/latest
+
+api:
+  url: http://model-api:8000
+
+streaming:
+  watermark_seconds: 60
+  checkpoint_ms: 60000

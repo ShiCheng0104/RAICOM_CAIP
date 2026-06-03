@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FP-FraudSim Risk Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">FS</div>
+          <div>
+            <h1>FP-FraudSim</h1>
+            <p>Risk Operations</p>
+          </div>
+        </div>
+        <nav class="tabs" aria-label="Dashboard sections">
+          <button class="tab active" data-view="overview" type="button">总览</button>
+          <button class="tab" data-view="stream" type="button">实时</button>
+          <button class="tab" data-view="models" type="button">模型</button>
+          <button class="tab" data-view="metrics" type="button">指标</button>
+          <button class="tab" data-view="predict" type="button">试算</button>
+        </nav>
+        <div class="side-status">
+          <span id="apiDot" class="dot"></span>
+          <span id="apiState">连接中</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="viewTitle">总览</h2>
+            <p id="viewSubtitle">实时风控模型状态、数据指标与演示入口</p>
+          </div>
+          <div class="actions">
+            <button id="refreshBtn" class="icon-btn" type="button" title="刷新">⟳</button>
+            <button id="reloadBtn" class="primary-btn" type="button">重载当前模型</button>
+          </div>
+        </header>
+
+        <section id="overview" class="view active">
+          <div class="summary-grid">
+            <div class="metric-tile">
+              <span>当前模型</span>
+              <strong id="activeModel">--</strong>
+              <small id="activeVersion">--</small>
+            </div>
+            <div class="metric-tile">
+              <span>特征数</span>
+              <strong id="featureCount">--</strong>
+              <small>训练/推理对齐</small>
+            </div>
+            <div class="metric-tile">
+              <span>PR-AUC</span>
+              <strong id="prAuc">--</strong>
+              <small>不平衡检测核心指标</small>
+            </div>
+            <div class="metric-tile">
+              <span>F1@0.80</span>
+              <strong id="f1Score">--</strong>
+              <small>高风险阈值</small>
+            </div>
+          </div>
+
+          <div class="split-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>运行状态</h3>
+              </div>
+              <dl class="kv">
+                <dt>加载状态</dt><dd id="loadedState">--</dd>
+                <dt>模型路径</dt><dd id="modelPath">--</dd>
+                <dt>加载时间</dt><dd id="loadedAt">--</dd>
+                <dt>可用 Adapter</dt><dd id="adapterList">--</dd>
+              </dl>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>流式 Topic</h3>
+              </div>
+              <div class="topic-list">
+                <span>transaction_events</span>
+                <span>risk_results</span>
+                <span>alert_events</span>
+                <span>late_events</span>
+                <span>feedback_events</span>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="stream" class="view">
+          <div class="split-layout stream-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>风险结果流</h3>
+                <div class="inline-controls">
+                  <select id="topicSelect" aria-label="Topic">
+                    <option value="risk_results">risk_results</option>
+                    <option value="risk_results_batch">risk_results_batch</option>
+                    <option value="alert_events">alert_events</option>
+                    <option value="late_events">late_events</option>
+                    <option value="feedback_events">feedback_events</option>
+                    <option value="transaction_events">transaction_events</option>
+                  </select>
+                  <button id="streamRefreshBtn" class="secondary-btn" type="button">拉取</button>
+                </div>
+              </div>
+              <div id="streamRows" class="stream-list">暂无消息</div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h3>人工审核反馈</h3>
+              </div>
+              <div class="feedback-form">
+                <label>
+                  交易 ID
+                  <input id="feedbackTxn" type="text" placeholder="transaction_id" />
+                </label>
+                <label>
+                  审核标签
+                  <select id="feedbackLabel">
+                    <option value="1">欺诈</option>
+                    <option value="0">正常</option>
+                  </select>
+                </label>
+                <label>
+                  备注
+                  <textarea id="feedbackNote" class="note-input" spellcheck="false" placeholder="可选"></textarea>
+                </label>
+                <button id="feedbackBtn" class="primary-btn" type="button">写入 feedback_events</button>
+                <pre id="feedbackResult" class="feedback-result">等待提交</pre>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="models" class="view">
+          <div class="panel full">
+            <div class="panel-head">
+              <h3>模型热插拔</h3>
+              <span id="modelCount" class="pill">0 models</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>目录</th>
+                    <th>Adapter</th>
+                    <th>数据集</th>
+                    <th>特征</th>
+                    <th>PR-AUC</th>
+                    <th>ROC-AUC</th>
+                    <th>F1</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="modelRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="metrics" class="view">
+          <div class="split-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>当前指标</h3>
+              </div>
+              <pre id="metricsJson" class="json-block">{}</pre>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>Leaderboard</h3>
+              </div>
+              <div id="leaderboard" class="leaderboard"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="predict" class="view">
+          <div class="split-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <h3>交易 JSON</h3>
+                <button id="sampleBtn" class="secondary-btn" type="button">填入样例</button>
+              </div>
+              <textarea id="predictInput" spellcheck="false"></textarea>
+              <div class="form-actions">
+                <button id="predictBtn" class="primary-btn" type="button">计算风险</button>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h3>风险结果</h3>
+              </div>
+              <div id="predictResult" class="result-box">等待输入</div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
