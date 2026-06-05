@@ -110,6 +110,7 @@ def select_training_frame(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, Fe
 
     drop_cols = set(ID_AND_CONTROL_COLS) | LEAKAGE_COLS
     drop_cols |= {col for col in labeled.columns if _is_time_col(col)}
+    drop_cols |= {col for col in labeled.columns if col.endswith("_fraud_group_mining_id")}
     x = labeled.drop(columns=[col for col in drop_cols if col in labeled.columns])
 
     bool_cols = x.select_dtypes(include=["bool"]).columns

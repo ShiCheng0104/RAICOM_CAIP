@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import joblib
+import pandas as pd
 from confluent_kafka import Consumer, Producer, TopicPartition
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
@@ -13,7 +17,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from fraudsim.config import load_config, model_dir
+from fraudsim.config import dataset_dir as resolve_dataset_dir
 from fraudsim.features import FeatureConfig, apply_feature_config, records_to_frame
+from fraudsim.graph_mining import (
+    entity_risk_path,
+    groups_path,
+    load_entity_group_detail,
+    load_group_detail,
+    mine_fraud_graph,
+    summary_path,
+)
 from fraudsim.models.base import ModelArtifact
 from fraudsim.models.registry import available_adapters, get_model_adapter
 
@@ -37,11 +50,20 @@ class FeedbackRequest(BaseModel):
     event: dict[str, Any] | None = Field(default=None)
 
 
+class DemoRunRequest(BaseModel):
+    action: str = Field(description="Demo action id.")
+
+
 def _read_json(path: Path) -> Any:
     if not path.exists():
         return None
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _json_records(df: pd.DataFrame) -> list[dict[str, Any]]:
+    rows = df.where(pd.notna(df), None).to_dict(orient="records")
+    return rows
 
 
 class ModelRuntime:
@@ -93,6 +115,7 @@ class ModelRuntime:
 
 runtime = ModelRuntime()
 app = FastAPI(title="FP-FraudSim Model API", version="0.1.0")
+DEMO_RUNS: dict[str, dict[str, Any]] = {}
 STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -100,6 +123,68 @@ if STATIC_DIR.exists():
 
 def kafka_bootstrap() -> str:
     return runtime.config.get("kafka", {}).get("bootstrap_servers", "kafka:9092")
+
+
+def demo_actions() -> dict[str, dict[str, Any]]:
+    dataset = runtime.config.get("dataset", {}).get("name", "fp_fraudsim_injected")
+    bootstrap = kafka_bootstrap()
+    return {
+        "load_profiles": {
+            "label": "初始化画像",
+            "description": "把用户、商户、设备、IP 和图统计画像加载到 Redis。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.streaming.load_profiles",
+                "--dataset",
+                dataset,
+                "--redis-url",
+                "redis://redis:6379/0",
+            ],
+        },
+        "replay_stream": {
+            "label": "回放交易流",
+            "description": "向 Kafka transaction_events 写入一小段交易流，用于观察 Flink 实时输出。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.streaming.producer",
+                "--dataset",
+                dataset,
+                "--bootstrap-servers",
+                bootstrap,
+                "--rate",
+                "20",
+                "--limit",
+                "300",
+            ],
+        },
+        "retrain_logistic": {
+            "label": "轻量重训",
+            "description": "运行一个轻量 sklearn_logistic 重训演示，产物进入 models/sklearn_logistic/latest。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.training.train",
+                "--dataset",
+                dataset,
+                "--model",
+                "sklearn_logistic",
+            ],
+        },
+        "graph_mining": {
+            "label": "图挖掘团伙",
+            "description": "从共享设备、IP、商户、收款方和历史欺诈种子中挖掘疑似团伙。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.graph_mining",
+                "--dataset",
+                dataset,
+                "--force",
+            ],
+        },
+    }
 
 
 def active_thresholds() -> dict[str, float]:
@@ -151,9 +236,66 @@ def reason_codes(record: dict[str, Any], score: float) -> list[str]:
         reasons.append("merchant_concentration")
     if _num(graph.get("payer_graph_fraud_edge_ratio")) >= 0.2 or _num(graph.get("payer_graph_fraud_edge_count")) >= 3:
         reasons.append("graph_fraud_neighborhood")
+    if _num(graph.get("payer_graph_mining_group_risk_score")) >= 0.70:
+        reasons.append("fraud_ring_detected")
+    if _num(graph.get("payer_graph_mining_shared_device_count")) >= 2:
+        reasons.append("shared_device_ring")
+    if _num(graph.get("payer_graph_mining_shared_ip_count")) >= 2:
+        reasons.append("shared_ip_cluster")
+    if _num(graph.get("merchant_graph_mining_group_risk_score")) >= 0.60:
+        reasons.append("merchant_fraud_community")
     if score >= active_thresholds()["high"] and not reasons:
         reasons.append("model_high_score")
     return reasons[:5]
+
+
+def active_dataset_dir() -> Path:
+    return resolve_dataset_dir(runtime.config, runtime.config.get("dataset", {}).get("name"))
+
+
+def _read_log_tail(path: Path, max_chars: int = 6000) -> str:
+    if not path.exists():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def demo_run_status(run_id: str) -> dict[str, Any]:
+    row = DEMO_RUNS.get(run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Demo run not found: {run_id}")
+    process: subprocess.Popen | None = row.get("process")
+    exit_code = process.poll() if process is not None else row.get("exit_code")
+    status = "running" if exit_code is None else "succeeded" if exit_code == 0 else "failed"
+    if exit_code is not None:
+        row["exit_code"] = exit_code
+        if not row.get("finished_at"):
+            row["finished_at"] = datetime.now(timezone.utc).isoformat()
+    started_ts = row.get("started_at_ts")
+    elapsed_seconds = None
+    if started_ts is not None:
+        elapsed_seconds = max(0.0, datetime.now(timezone.utc).timestamp() - float(started_ts))
+    log_path = Path(row["log_path"])
+    return {
+        "run_id": run_id,
+        "action": row["action"],
+        "label": row.get("label"),
+        "description": row.get("description"),
+        "command": row.get("command"),
+        "pid": process.pid if process is not None else None,
+        "status": status,
+        "exit_code": exit_code,
+        "started_at": row.get("started_at"),
+        "finished_at": row.get("finished_at"),
+        "elapsed_seconds": elapsed_seconds,
+        "log_path": str(log_path),
+        "log_tail": _read_log_tail(log_path),
+    }
 
 
 @app.get("/health")
@@ -210,6 +352,7 @@ def list_models() -> dict[str, Any]:
                 "f1": metrics.get("f1"),
                 "with_window_features": metrics.get("with_window_features"),
                 "with_graph_features": metrics.get("with_graph_features"),
+                "with_graph_mining_features": metrics.get("with_graph_mining_features"),
                 "updated_at": datetime.fromtimestamp(model_file.stat().st_mtime, tz=timezone.utc).isoformat(),
             })
     rows.sort(key=lambda row: (row.get("loaded") is not True, row.get("name") or ""))
@@ -237,6 +380,58 @@ def metrics() -> dict[str, Any]:
 def leaderboard() -> dict[str, Any]:
     rows = _read_json(Path("models/leaderboard.json")) or []
     return {"rows": rows}
+
+
+@app.get("/graph/mining/summary")
+def graph_mining_summary(force: bool = False) -> dict[str, Any]:
+    ds_dir = active_dataset_dir()
+    if force or not summary_path(ds_dir).exists():
+        _, _, summary = mine_fraud_graph(ds_dir, force=force)
+        return summary
+    return _read_json(summary_path(ds_dir)) or {}
+
+
+@app.get("/graph/mining/groups")
+def graph_mining_groups(limit: int = 20) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    ds_dir = active_dataset_dir()
+    if not groups_path(ds_dir).exists():
+        mine_fraud_graph(ds_dir)
+    groups = pd.read_parquet(groups_path(ds_dir))
+    groups = groups.sort_values("graph_mining_group_risk_score", ascending=False).head(limit)
+    return {"groups": _json_records(groups)}
+
+
+@app.get("/graph/mining/groups/{group_id}")
+def graph_mining_group_detail(group_id: str) -> dict[str, Any]:
+    ds_dir = active_dataset_dir()
+    detail = load_group_detail(ds_dir, group_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"Graph mining group not found: {group_id}")
+    return detail
+
+
+@app.get("/graph/mining/entity/{entity_id}")
+def graph_mining_entity(entity_id: str) -> dict[str, Any]:
+    ds_dir = active_dataset_dir()
+    if not entity_risk_path(ds_dir).exists():
+        mine_fraud_graph(ds_dir)
+    features = pd.read_parquet(entity_risk_path(ds_dir))
+    row = features[features["entity_id"] == entity_id]
+    if row.empty:
+        return {"entity_id": entity_id, "found": False}
+    payload = _json_records(row.head(1))[0]
+    return {"entity_id": entity_id, "found": True, "graph_mining": payload}
+
+
+@app.get("/graph/mining/entity/{entity_id}/links")
+def graph_mining_entity_links(entity_id: str) -> dict[str, Any]:
+    ds_dir = active_dataset_dir()
+    detail = load_entity_group_detail(ds_dir, entity_id)
+    if detail is None:
+        return {"entity_id": entity_id, "found": False}
+    return {"entity_id": entity_id, "found": True, **detail}
 
 
 @app.get("/topics/{topic}/recent")
@@ -303,6 +498,63 @@ def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
     return {"topic": topic, "written": True, "feedback": payload}
 
 
+@app.get("/demo/actions")
+def list_demo_actions() -> dict[str, Any]:
+    actions = demo_actions()
+    return {
+        "actions": [
+            {
+                "id": action_id,
+                "label": action["label"],
+                "description": action["description"],
+                "command": " ".join(action["command"]),
+            }
+            for action_id, action in actions.items()
+        ]
+    }
+
+
+@app.post("/demo/run")
+def run_demo_action(request: DemoRunRequest) -> dict[str, Any]:
+    actions = demo_actions()
+    action = actions.get(request.action)
+    if action is None:
+        raise HTTPException(status_code=404, detail=f"Unknown demo action: {request.action}")
+
+    log_dir = Path("models/demo_runs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = f"{request.action}_{stamp}_{uuid.uuid4().hex[:8]}"
+    log_path = log_dir / f"{run_id}.log"
+    log_file = log_path.open("ab")
+    try:
+        process = subprocess.Popen(
+            action["command"],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            cwd=Path.cwd(),
+        )
+    finally:
+        log_file.close()
+    started_at = datetime.now(timezone.utc)
+    DEMO_RUNS[run_id] = {
+        "process": process,
+        "action": request.action,
+        "label": action["label"],
+        "description": action["description"],
+        "command": " ".join(action["command"]),
+        "log_path": log_path,
+        "started_at": started_at.isoformat(),
+        "started_at_ts": started_at.timestamp(),
+    }
+    return {"started": True, **demo_run_status(run_id)}
+
+
+@app.get("/demo/runs/{run_id}")
+def get_demo_run(run_id: str) -> dict[str, Any]:
+    return demo_run_status(run_id)
+
+
 @app.post("/predict")
 def predict(request: PredictRequest) -> dict[str, Any]:
     if not runtime.loaded:
@@ -350,4 +602,10 @@ def dashboard() -> FileResponse:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Dashboard assets are not installed.")
-    return FileResponse(index_path)
+    return FileResponse(
+        index_path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )

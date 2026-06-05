@@ -26,6 +26,23 @@ def delivery_report(err: Any, msg: Any) -> None:
         print(f"[producer] delivery failed: {err}")
 
 
+def emit_flush_markers(producer: Producer, topic: str, partitions: int) -> None:
+    for partition in range(max(1, partitions)):
+        marker = {
+            "__fraudsim_flush": True,
+            "partition": partition,
+            "sent_at": time.time(),
+        }
+        producer.produce(
+            topic=topic,
+            partition=partition,
+            key=f"__fraudsim_flush_{partition}".encode("utf-8"),
+            value=json.dumps(marker, ensure_ascii=False).encode("utf-8"),
+            callback=delivery_report,
+        )
+        producer.poll(0)
+
+
 def run(args: argparse.Namespace) -> None:
     config = load_config(args.config)
     ds_dir = dataset_dir(config, args.dataset)
@@ -59,6 +76,8 @@ def run(args: argparse.Namespace) -> None:
             if sent % 1000 == 0:
                 producer.flush(5)
                 print(f"[producer] sent={sent}")
+    if args.emit_flush_markers:
+        emit_flush_markers(producer, topic, args.partitions)
     producer.flush()
     print(f"[producer] completed sent={sent}")
 
@@ -72,6 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rate", type=float, default=100.0, help="Events per second; <=0 sends as fast as possible.")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--partitions", type=int, default=3)
+    parser.add_argument("--emit-flush-markers", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 

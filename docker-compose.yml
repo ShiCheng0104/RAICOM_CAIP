@@ -44,9 +44,10 @@ services:
     environment:
       FRAUDSIM_MODEL_PATH: /app/models/lightgbm/latest
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     volumes:
       - ./models:/app/models
-      - ./data/processed:/app/data/processed:ro
+      - ./data/processed:/app/data/processed
     depends_on:
       redis:
         condition: service_healthy
@@ -95,15 +96,19 @@ services:
       flink run -m flink-jobmanager:8081 -py /app/fraudsim/streaming/flink_job.py"
     environment:
       FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
-      FRAUDSIM_TOPIC_IN: transaction_events
-      FRAUDSIM_TOPIC_RISK: risk_results
-      FRAUDSIM_TOPIC_ALERT: alert_events
-      FRAUDSIM_TOPIC_LATE: late_events
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
+      FRAUDSIM_TOPIC_IN: ${FRAUDSIM_TOPIC_IN:-transaction_events}
+      FRAUDSIM_TOPIC_RISK: ${FRAUDSIM_TOPIC_RISK:-risk_results}
+      FRAUDSIM_TOPIC_ALERT: ${FRAUDSIM_TOPIC_ALERT:-alert_events}
+      FRAUDSIM_TOPIC_LATE: ${FRAUDSIM_TOPIC_LATE:-late_events}
       FRAUDSIM_API_URL: http://model-api:8000
       FRAUDSIM_REDIS_URL: redis://redis:6379/0
       FRAUDSIM_FLINK_CHECKPOINT_MS: 60000
       FRAUDSIM_WATERMARK_SECONDS: 60
       FRAUDSIM_FLINK_PARALLELISM: 2
+      FRAUDSIM_SCORING_MODE: ${FRAUDSIM_SCORING_MODE:-microbatch}
+      FRAUDSIM_BATCH_SIZE: ${FRAUDSIM_BATCH_SIZE:-50}
+      FRAUDSIM_BATCH_LINGER_MS: ${FRAUDSIM_BATCH_LINGER_MS:-300}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
     depends_on:
@@ -124,6 +129,7 @@ services:
     command: python -m fraudsim.training.train --dataset fp_fraudsim_injected --model lightgbm
     environment:
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     volumes:
       - ./models:/app/models
       - ./data/processed:/app/data/processed:ro
@@ -137,6 +143,7 @@ services:
     environment:
       FRAUDSIM_REDIS_URL: redis://redis:6379/0
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     volumes:
       - ./data/processed:/app/data/processed:ro
     depends_on:
@@ -152,6 +159,7 @@ services:
     environment:
       FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     volumes:
       - ./data/processed:/app/data/processed:ro
     depends_on:
@@ -173,6 +181,7 @@ services:
       FRAUDSIM_REDIS_URL: redis://redis:6379/0
       FRAUDSIM_API_URL: http://model-api:8000
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
+      FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     depends_on:
       kafka:
         condition: service_healthy

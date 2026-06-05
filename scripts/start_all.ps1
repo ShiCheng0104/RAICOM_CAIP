@@ -5,6 +5,7 @@ param(
   [string]$ProjectName = "fraudsim",
   [string]$PythonExe = ".\.conda\ruikang\python.exe",
   [switch]$SkipTrain,
+  [switch]$SkipGraphMining,
   [switch]$SkipReplay
 )
 
@@ -92,7 +93,15 @@ if ((-not $SkipTrain) -and (-not (Test-Path $ModelPath))) {
   Write-Warning "[start-all] SkipTrain is set and model artifact is missing. model-api may fail to load a model."
 }
 
+if (-not $SkipGraphMining) {
+  Write-Step "Preparing graph mining artifacts"
+  Invoke-Checked $PythonExe -m fraudsim.graph_mining --dataset $Dataset
+} else {
+  Write-Warning "[start-all] SkipGraphMining is set. The Dashboard graph mining page can still generate artifacts on demand."
+}
+
 Write-Step "Building and starting Docker services"
+$env:FRAUDSIM_DATASET = $Dataset
 Invoke-Checked docker compose -p $ProjectName up -d --build kafka redis model-api flink-jobmanager flink-taskmanager flink-risk-job
 
 Write-Step "Waiting for Model API"

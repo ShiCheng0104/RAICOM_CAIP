@@ -147,6 +147,22 @@ docker compose -p fraudsim ps
 .\.conda\ruikang\python.exe -m fraudsim.streaming.load_profiles --dataset fp_fraudsim_injected --redis-url redis://localhost:6379/0
 ```
 
+可选：先运行图分析方法挖掘疑似欺诈团伙，并把团伙风险并入图画像：
+
+```powershell
+.\.conda\ruikang\python.exe -m fraudsim.graph_mining --dataset fp_fraudsim_injected --force
+.\.conda\ruikang\python.exe -c "from pathlib import Path; from fraudsim.graph_features import build_graph_entity_features; build_graph_entity_features(Path('data/processed/fp_fraudsim_injected'), force=True)"
+```
+
+图挖掘会生成：
+
+```text
+data/processed/fp_fraudsim_injected/graph_mining/fraud_groups.parquet
+data/processed/fp_fraudsim_injected/graph_mining/entity_graph_risk.parquet
+data/processed/fp_fraudsim_injected/graph_mining/group_evidence.jsonl
+data/processed/fp_fraudsim_injected/graph_mining/graph_mining_summary.json
+```
+
 回放交易流：
 
 ```powershell
@@ -173,12 +189,28 @@ Dashboard 支持：
 
 ```text
 1. 查看 API 健康状态和当前模型
-2. 查看 leaderboard 与 metrics
+2. 点击 leaderboard 切换查看不同模型 metrics
 3. 查看 risk_results / alert_events / risk_results_batch
 4. 热切换模型
-5. 单笔试算
+5. 表单化单笔试算，并展示理由码解释
 6. 提交人工反馈
+7. 查看图分析挖掘出的疑似团伙、共享设备/IP/收款方证据和召回指标
+8. 拖拽、缩放团伙证据图，辅助人工研判和溯源分析
 ```
+
+总览页和实时页中的演示按钮支持任务状态展示。点击“挖掘欺诈团伙”后，页面会显示：
+
+```text
+运行中 / 成功 / 失败
+任务 ID
+耗时
+退出码
+日志尾部
+```
+
+图挖掘成功后会自动刷新“图挖掘”页。该按钮需要 `model-api` 容器对 `data/processed` 有写权限；当前 `docker-compose.yml` 已按演示需要配置为可写挂载。
+
+如果使用一键启动脚本，脚本会在容器启动前预生成图挖掘产物，因此图挖掘页通常首次打开即可看到 Top 风险团伙；也可以在 Dashboard 内重新点击“挖掘欺诈团伙”刷新。
 
 ## 8. 一键启动
 
@@ -194,18 +226,30 @@ Dashboard 支持：
 .\scripts\start_all.ps1 -Dataset fp_fraudsim_injected -ReplayLimit 1000 -ReplayRate 100
 ```
 
+可选跳过项：
+
+```powershell
+.\scripts\start_all.ps1 -SkipTrain
+.\scripts\start_all.ps1 -SkipGraphMining
+.\scripts\start_all.ps1 -SkipReplay
+```
+
 脚本会自动执行：
 
 ```text
 1. 检查本地 Python 环境
 2. 检查或训练 LightGBM 模型
-3. 构建并启动 Docker 容器
-4. 创建 Kafka topics
-5. 初始化 Redis 画像
-6. 回放交易流
-7. 输出 API / Dashboard / Flink UI 地址
-8. 打印基础验证结果
+3. 预生成图挖掘产物，保证图挖掘页可直接展示
+4. 将 -Dataset 写入容器环境，保证 API、演示按钮、Flink 与脚本使用同一数据集
+5. 构建并启动 Docker 容器
+6. 创建 Kafka topics
+7. 初始化 Redis 画像
+8. 回放交易流
+9. 输出 API / Dashboard / Flink UI 地址
+10. 打印基础验证结果
 ```
+
+默认情况下，一键启动后 Dashboard 的总览、实时、图挖掘、模型、指标和试算页都可直接使用。若通过 `-SkipGraphMining` 跳过预生成，图挖掘页仍可在首次访问或点击“挖掘欺诈团伙”时按需生成结果。
 
 ## 9. 验证方式
 
@@ -249,6 +293,29 @@ docker exec fraudsim-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-
 
 ```powershell
 .\.conda\ruikang\python.exe -m fraudsim.streaming.benchmark --dataset fp_fraudsim_injected --bootstrap-servers localhost:9094 --limit 100 --timeout 120
+```
+
+运行图挖掘效果验证：
+
+```powershell
+.\.conda\ruikang\python.exe -m fraudsim.graph_mining --dataset fp_fraudsim_injected --force
+Get-Content data\processed\fp_fraudsim_injected\graph_mining\graph_mining_summary.json
+```
+
+图挖掘 API 验证：
+
+```powershell
+Invoke-RestMethod "http://localhost:8000/graph/mining/summary" | ConvertTo-Json -Depth 8
+Invoke-RestMethod "http://localhost:8000/graph/mining/groups?limit=3" | ConvertTo-Json -Depth 8
+Invoke-RestMethod "http://localhost:8000/graph/mining/groups/GM_000316" | ConvertTo-Json -Depth 10
+```
+
+团伙详情接口会返回 `risk_level`、`explanation_codes`、`explanation_text`、`evidence` 和前端可直接绘制的 `subgraph`。
+
+演示任务状态接口：
+
+```powershell
+Invoke-RestMethod "http://localhost:8000/demo/runs/<run_id>" | ConvertTo-Json -Depth 8
 ```
 
 运行微批量推理验证：

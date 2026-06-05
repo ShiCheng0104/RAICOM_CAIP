@@ -96,9 +96,10 @@ def update_leaderboard(models_root: Path, metrics: dict[str, Any]) -> None:
     else:
         rows = []
 
+    metric_key = metrics.get("model_dir") or metrics["model_name"]
     rows = [
         row for row in rows
-        if not (row.get("model_name") == metrics["model_name"] and row.get("dataset") == metrics["dataset"])
+        if not ((row.get("model_dir") or row.get("model_name")) == metric_key and row.get("dataset") == metrics["dataset"])
     ]
     rows.append(metrics)
     rows.sort(key=lambda row: row.get("pr_auc", 0.0), reverse=True)
@@ -184,7 +185,12 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         all_raw = add_offline_window_features(all_raw)
     if args.with_graph_features:
         print("[fraudsim] adding graph features")
-        all_raw = add_graph_features(all_raw, ds_dir, force_rebuild=args.rebuild_graph_features)
+        all_raw = add_graph_features(
+            all_raw,
+            ds_dir,
+            force_rebuild=args.rebuild_graph_features,
+            include_graph_mining=args.with_graph_mining_features,
+        )
 
     train_df = enrich_transactions(all_raw[all_raw["_fraudsim_split"] == "train"].drop(columns=["_fraudsim_split"]), ds_dir)
     valid_df = enrich_transactions(all_raw[all_raw["_fraudsim_split"] == "valid"].drop(columns=["_fraudsim_split"]), ds_dir)
@@ -210,9 +216,11 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         threshold=args.high_threshold,
     )
     metrics["model_version"] = artifact.model_version
+    metrics["model_dir"] = out_dir.parent.name
     metrics["feature_count"] = len(feature_config.feature_columns)
     metrics["with_window_features"] = bool(args.with_window_features)
     metrics["with_graph_features"] = bool(args.with_graph_features)
+    metrics["with_graph_mining_features"] = bool(args.with_graph_mining_features)
     metrics["feedback_rows"] = int(len(feedback_df))
     metrics["threshold_calibration"] = calibrate_thresholds(y_valid, valid_scores)
 
@@ -247,6 +255,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--high-threshold", type=float, default=0.80)
     parser.add_argument("--with-window-features", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--with-graph-features", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--with-graph-mining-features", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--rebuild-graph-features", action="store_true")
     parser.add_argument("--feedback-path", default=None, help="Optional parquet/jsonl file with reviewed labels.")
     return parser.parse_args()

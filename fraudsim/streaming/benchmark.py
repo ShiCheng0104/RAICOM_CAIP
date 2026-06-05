@@ -6,9 +6,10 @@ import time
 from pathlib import Path
 from statistics import mean
 
-from confluent_kafka import Consumer, Producer
+from confluent_kafka import Consumer, Producer, TopicPartition
 
 from fraudsim.config import dataset_dir, load_config
+from fraudsim.streaming.producer import emit_flush_markers
 from fraudsim.streaming.topics import ensure_topics
 
 
@@ -31,7 +32,13 @@ def run(args: argparse.Namespace) -> None:
         "group.id": f"fraudsim-benchmark-{int(time.time())}",
         "auto.offset.reset": "latest",
     })
-    consumer.subscribe([risk_topic])
+    metadata = consumer.list_topics(topic=risk_topic, timeout=10)
+    assignments: list[TopicPartition] = []
+    for partition in sorted(metadata.topics[risk_topic].partitions):
+        tp = TopicPartition(risk_topic, partition)
+        _, high = consumer.get_watermark_offsets(tp, timeout=10)
+        assignments.append(TopicPartition(risk_topic, partition, high))
+    consumer.assign(assignments)
 
     sent_ids: set[str] = set()
     start = time.time()
@@ -49,6 +56,10 @@ def run(args: argparse.Namespace) -> None:
                 value=json.dumps(event, ensure_ascii=False).encode("utf-8"),
             )
             producer.poll(0)
+            if args.rate > 0:
+                time.sleep(1 / args.rate)
+    if args.emit_flush_markers:
+        emit_flush_markers(producer, tx_topic, args.partitions)
     producer.flush()
     produce_done = time.time()
 
@@ -59,7 +70,12 @@ def run(args: argparse.Namespace) -> None:
         msg = consumer.poll(1.0)
         if msg is None or msg.error():
             continue
-        result = json.loads(msg.value().decode("utf-8"))
+        try:
+            result = json.loads(msg.value().decode("utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(result, dict):
+            continue
         tx_id = str(result.get("transaction_id"))
         if tx_id not in sent_ids:
             continue
@@ -83,6 +99,7 @@ def run(args: argparse.Namespace) -> None:
         "latency_p95_sec": p95,
         "latency_p99_sec": p99,
         "timeout_sec": args.timeout,
+        "flush_markers": args.emit_flush_markers,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
@@ -98,6 +115,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--partitions", type=int, default=3)
+    parser.add_argument("--rate", type=float, default=0.0, help="Optional input rate in events/sec. Default sends a burst.")
+    parser.add_argument("--emit-flush-markers", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 
