@@ -109,6 +109,31 @@ input {
   font-size: 13px;
 }
 
+.api-key-box {
+  display: grid;
+  gap: 7px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.api-key-box div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.api-key-box input {
+  height: 30px;
+  min-width: 0;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.api-key-box input::placeholder {
+  color: #94a3b8;
+}
+
 .dot {
   width: 9px;
   height: 9px;

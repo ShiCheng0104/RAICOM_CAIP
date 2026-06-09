@@ -218,15 +218,35 @@ function renderReasonList(reasons) {
 }
 
 async function api(path, options = {}) {
+  const apiKey = window.localStorage.getItem("fraudsim_api_key") || "";
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (apiKey) headers["X-API-Key"] = apiKey;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || response.statusText);
   }
   return response.json();
+}
+
+function loadApiKey() {
+  const input = document.getElementById("apiKeyInput");
+  if (input) input.value = window.localStorage.getItem("fraudsim_api_key") || "";
+}
+
+function saveApiKey() {
+  const input = document.getElementById("apiKeyInput");
+  if (!input) return;
+  const value = input.value.trim();
+  if (value) {
+    window.localStorage.setItem("fraudsim_api_key", value);
+  } else {
+    window.localStorage.removeItem("fraudsim_api_key");
+  }
+  refreshAll();
 }
 
 async function refreshAll() {
@@ -1136,7 +1156,7 @@ async function pollDemoRun(runId, action, outputId = "overviewTaskOutput") {
     document.getElementById("topicSelect").value = "risk_results";
     await refreshStream();
   }
-  if (run.status === "succeeded" && action === "retrain_logistic") {
+  if (run.status === "succeeded" && (action === "retrain_logistic" || action === "adaptive_retrain")) {
     await refreshAll();
     switchView("models");
   }
@@ -1344,11 +1364,14 @@ document.querySelectorAll(".sort-btn").forEach((button) => {
 });
 
 bind("refreshBtn", "click", refreshAll);
+bind("apiKeySaveBtn", "click", saveApiKey);
 bind("streamRefreshBtn", "click", refreshStream);
 bind("streamReplayBtn", "click", () => runDemoAction("replay_stream", "streamTaskOutput"));
 bind("feedbackBtn", "click", submitFeedback);
 bind("overviewProfilesBtn", "click", () => runDemoAction("load_profiles", "overviewTaskOutput"));
+bind("overviewSimulateBtn", "click", () => runDemoAction("simulate_stream", "overviewTaskOutput"));
 bind("overviewRetrainBtn", "click", () => runDemoAction("retrain_logistic", "overviewTaskOutput"));
+bind("overviewAdaptiveRetrainBtn", "click", () => runDemoAction("adaptive_retrain", "overviewTaskOutput"));
 bind("overviewGraphMiningBtn", "click", () => runDemoAction("graph_mining", "overviewTaskOutput"));
 bind("graphRefreshBtn", "click", () => refreshGraphMining(true));
 bind("fraudRingZoomOutBtn", "click", () => zoomFraudRing(-0.15));
@@ -1373,5 +1396,6 @@ bind("sampleBtn", "click", () => setSampleForm(sampleRecord));
 bind("predictBtn", "click", predict);
 
 normalizeCountryInputs();
+loadApiKey();
 setSampleForm(sampleRecord);
 refreshAll();

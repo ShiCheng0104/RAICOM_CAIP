@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FP-FraudSim Risk Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260605_dashboard_v7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260608_adaptive_v2" />
   </head>
   <body>
     <div class="shell">
@@ -27,6 +27,13 @@
         <div class="side-status">
           <span id="apiDot" class="dot"></span>
           <span id="apiState">连接中</span>
+        </div>
+        <div class="api-key-box">
+          <label for="apiKeyInput">API Key</label>
+          <div>
+            <input id="apiKeyInput" type="password" placeholder="可选" />
+            <button id="apiKeySaveBtn" class="secondary-btn compact" type="button">保存</button>
+          </div>
         </div>
       </aside>
 
@@ -98,7 +105,9 @@
               </div>
               <div class="quick-actions">
                 <button id="overviewProfilesBtn" class="secondary-btn" type="button">初始化画像</button>
+                <button id="overviewSimulateBtn" class="secondary-btn" type="button">生成仿真流</button>
                 <button id="overviewRetrainBtn" class="secondary-btn" type="button">轻量重训模型</button>
+                <button id="overviewAdaptiveRetrainBtn" class="secondary-btn" type="button">反馈重训候选</button>
                 <button id="overviewGraphMiningBtn" class="secondary-btn" type="button">挖掘欺诈团伙</button>
               </div>
               <div id="overviewTaskOutput" class="task-output">等待操作</div>
@@ -339,6 +348,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260605_dashboard_v7"></script>
+    <script src="/static/app.js?v=20260608_adaptive_v2"></script>
   </body>
 </html>

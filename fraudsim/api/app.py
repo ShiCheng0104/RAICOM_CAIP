@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 import uuid
@@ -11,7 +13,7 @@ from typing import Any
 import joblib
 import pandas as pd
 from confluent_kafka import Consumer, Producer, TopicPartition
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -52,6 +54,14 @@ class FeedbackRequest(BaseModel):
 
 class DemoRunRequest(BaseModel):
     action: str = Field(description="Demo action id.")
+
+
+class PromoteModelRequest(BaseModel):
+    model_name: str = Field(description="Model directory under models/.")
+
+
+class AuditQuery(BaseModel):
+    limit: int = 50
 
 
 def _read_json(path: Path) -> Any:
@@ -125,6 +135,48 @@ def kafka_bootstrap() -> str:
     return runtime.config.get("kafka", {}).get("bootstrap_servers", "kafka:9092")
 
 
+def require_api_key(request: Request = None) -> None:
+    expected = os.getenv("FRAUDSIM_API_KEY")
+    if not expected:
+        return
+    supplied = None
+    if request is not None:
+        supplied = request.headers.get("x-api-key") or request.query_params.get("api_key")
+    if supplied != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+
+def audit_path() -> Path:
+    return Path(os.getenv("FRAUDSIM_AUDIT_LOG", "models/audit/audit.jsonl"))
+
+
+def audit_event(action: str, status: str, detail: dict[str, Any] | None = None, request: Request = None) -> None:
+    path = audit_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "status": status,
+        "detail": detail or {},
+        "client": request.client.host if request and request.client else None,
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def feedback_pool_path() -> Path:
+    ds_dir = active_dataset_dir()
+    return ds_dir / "feedback" / "feedback_pool.jsonl"
+
+
+def append_feedback_pool(payload: dict[str, Any]) -> Path:
+    path = feedback_pool_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    return path
+
+
 def demo_actions() -> dict[str, dict[str, Any]]:
     dataset = runtime.config.get("dataset", {}).get("name", "fp_fraudsim_injected")
     bootstrap = kafka_bootstrap()
@@ -159,6 +211,21 @@ def demo_actions() -> dict[str, dict[str, Any]]:
                 "300",
             ],
         },
+        "simulate_stream": {
+            "label": "生成仿真交易流",
+            "description": "按默认参数生成一段带团伙欺诈的可调参仿真交易流。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.simulator.generate",
+                "--dataset",
+                dataset,
+                "--rows",
+                "5000",
+                "--fraud-ratio",
+                "0.04",
+            ],
+        },
         "retrain_logistic": {
             "label": "轻量重训",
             "description": "运行一个轻量 sklearn_logistic 重训演示，产物进入 models/sklearn_logistic/latest。",
@@ -170,6 +237,21 @@ def demo_actions() -> dict[str, dict[str, Any]]:
                 dataset,
                 "--model",
                 "sklearn_logistic",
+            ],
+        },
+        "adaptive_retrain": {
+            "label": "反馈重训候选模型",
+            "description": "使用人工审核反馈池训练 candidate 模型，等待评估后发布。",
+            "command": [
+                sys.executable,
+                "-m",
+                "fraudsim.training.train_with_feedback",
+                "--dataset",
+                dataset,
+                "--model",
+                "lightgbm",
+                "--feedback-path",
+                str(feedback_pool_path()),
             ],
         },
         "graph_mining": {
@@ -312,17 +394,72 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/reload")
-def reload_model(request: ReloadRequest | None = None) -> dict[str, Any]:
-    request = request or ReloadRequest()
-    runtime.load(model_name=request.model_name, model_path=request.model_path)
+def reload_model(payload: ReloadRequest = None, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
+    payload = payload or ReloadRequest()
+    runtime.load(model_name=payload.model_name, model_path=payload.model_path)
     if not runtime.loaded:
+        audit_event("reload_model", "failed", {"model_path": str(runtime.path)}, request)
         raise HTTPException(status_code=404, detail=f"Model is not loaded from {runtime.path}")
+    audit_event("reload_model", "succeeded", {"model_path": str(runtime.path)}, request)
     return health()
 
 
 @app.post("/models/activate")
-def activate_model(request: ReloadRequest) -> dict[str, Any]:
-    return reload_model(request)
+def activate_model(payload: ReloadRequest, request: Request = None) -> dict[str, Any]:
+    return reload_model(payload, request)
+
+
+def _copy_model_dir(src: Path, dst: Path) -> None:
+    if not src.exists() or not (src / "model.pkl").exists():
+        raise HTTPException(status_code=404, detail=f"Model artifact not found: {src}")
+    if dst.exists():
+        shutil.rmtree(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dst)
+
+
+@app.get("/models/{model_name}/candidate")
+def model_candidate(model_name: str) -> dict[str, Any]:
+    path = Path("models") / model_name / "candidate"
+    metrics = _read_json(path / "metrics.json")
+    manifest = _read_json(path / "candidate_manifest.json")
+    return {
+        "model_name": model_name,
+        "exists": bool((path / "model.pkl").exists()),
+        "path": str(path),
+        "metrics": metrics,
+        "manifest": manifest,
+    }
+
+
+@app.post("/models/promote")
+def promote_model(payload: PromoteModelRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
+    root = Path("models") / payload.model_name
+    candidate = root / "candidate"
+    latest = root / "latest"
+    rollback = root / "rollback"
+    if not candidate.exists() or not (candidate / "model.pkl").exists():
+        raise HTTPException(status_code=404, detail=f"Candidate model not found: {candidate}")
+    if latest.exists():
+        _copy_model_dir(latest, rollback)
+    _copy_model_dir(candidate, latest)
+    runtime.load(model_name=payload.model_name)
+    audit_event("promote_model", "succeeded", {"model_name": payload.model_name}, request)
+    return {"promoted": True, "model_name": payload.model_name, "active": health()}
+
+
+@app.post("/models/rollback")
+def rollback_model(payload: PromoteModelRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
+    root = Path("models") / payload.model_name
+    rollback = root / "rollback"
+    latest = root / "latest"
+    _copy_model_dir(rollback, latest)
+    runtime.load(model_name=payload.model_name)
+    audit_event("rollback_model", "succeeded", {"model_name": payload.model_name}, request)
+    return {"rolled_back": True, "model_name": payload.model_name, "active": health()}
 
 
 @app.get("/models/adapters")
@@ -484,18 +621,21 @@ def topic_recent(topic: str, limit: int = 20, timeout_ms: int = 800) -> dict[str
 
 
 @app.post("/feedback")
-def submit_feedback(request: FeedbackRequest) -> dict[str, Any]:
+def submit_feedback(payload: FeedbackRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
     topic = runtime.config.get("topics", {}).get("feedback_events", "feedback_events")
-    payload = request.model_dump()
-    payload["feedback_created_at"] = datetime.now(timezone.utc).isoformat()
+    row = payload.model_dump()
+    row["feedback_created_at"] = datetime.now(timezone.utc).isoformat()
+    pool_path = append_feedback_pool(row)
     producer = Producer({"bootstrap.servers": kafka_bootstrap()})
     producer.produce(
         topic=topic,
-        key=request.transaction_id.encode("utf-8"),
-        value=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        key=payload.transaction_id.encode("utf-8"),
+        value=json.dumps(row, ensure_ascii=False).encode("utf-8"),
     )
     producer.flush(10)
-    return {"topic": topic, "written": True, "feedback": payload}
+    audit_event("submit_feedback", "succeeded", {"transaction_id": payload.transaction_id, "pool_path": str(pool_path)}, request)
+    return {"topic": topic, "written": True, "feedback_pool_path": str(pool_path), "feedback": row}
 
 
 @app.get("/demo/actions")
@@ -515,16 +655,17 @@ def list_demo_actions() -> dict[str, Any]:
 
 
 @app.post("/demo/run")
-def run_demo_action(request: DemoRunRequest) -> dict[str, Any]:
+def run_demo_action(payload: DemoRunRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
     actions = demo_actions()
-    action = actions.get(request.action)
+    action = actions.get(payload.action)
     if action is None:
-        raise HTTPException(status_code=404, detail=f"Unknown demo action: {request.action}")
+        raise HTTPException(status_code=404, detail=f"Unknown demo action: {payload.action}")
 
     log_dir = Path("models/demo_runs")
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"{request.action}_{stamp}_{uuid.uuid4().hex[:8]}"
+    run_id = f"{payload.action}_{stamp}_{uuid.uuid4().hex[:8]}"
     log_path = log_dir / f"{run_id}.log"
     log_file = log_path.open("ab")
     try:
@@ -539,7 +680,7 @@ def run_demo_action(request: DemoRunRequest) -> dict[str, Any]:
     started_at = datetime.now(timezone.utc)
     DEMO_RUNS[run_id] = {
         "process": process,
-        "action": request.action,
+        "action": payload.action,
         "label": action["label"],
         "description": action["description"],
         "command": " ".join(action["command"]),
@@ -547,6 +688,7 @@ def run_demo_action(request: DemoRunRequest) -> dict[str, Any]:
         "started_at": started_at.isoformat(),
         "started_at_ts": started_at.timestamp(),
     }
+    audit_event("run_demo_action", "started", {"action": payload.action, "run_id": run_id}, request)
     return {"started": True, **demo_run_status(run_id)}
 
 
@@ -555,14 +697,32 @@ def get_demo_run(run_id: str) -> dict[str, Any]:
     return demo_run_status(run_id)
 
 
+@app.get("/audit/recent")
+def audit_recent(limit: int = 50, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    path = audit_path()
+    if not path.exists():
+        return {"path": str(path), "events": []}
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    return {"path": str(path), "events": rows[-limit:]}
+
+
 @app.post("/predict")
-def predict(request: PredictRequest) -> dict[str, Any]:
+def predict(payload: PredictRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
     if not runtime.loaded:
         raise HTTPException(status_code=503, detail=f"Model is not loaded from {runtime.path}")
 
-    records = request.records
+    records = payload.records
     if records is None:
-        records = [request.record] if request.record is not None else []
+        records = [payload.record] if payload.record is not None else []
     if not records:
         raise HTTPException(status_code=400, detail="Provide either 'record' or non-empty 'records'.")
 

@@ -14,6 +14,7 @@ Dockerfile                训练与 Model API 镜像
 Dockerfile.flink          PyFlink 作业镜像
 requirements-fraudsim.txt 本地训练与 API 依赖
 requirements-flink.txt    Flink 镜像内 Python 依赖
+docs/                     安全、混合云、模型迭代、特征解释文档
 ```
 
 本仓库不建议提交以下目录：
@@ -63,6 +64,7 @@ conda create -p .\.conda\ruikang python=3.10 -y
 2. 初始化 Redis 画像
 3. 回放 transaction_stream.jsonl 到 Kafka
 4. 运行验证脚本和单元测试
+5. 生成可调参仿真交易流
 ```
 
 ## 4. 数据和模型准备
@@ -169,6 +171,23 @@ data/processed/fp_fraudsim_injected/graph_mining/graph_mining_summary.json
 .\.conda\ruikang\python.exe -m fraudsim.streaming.producer --dataset fp_fraudsim_injected --bootstrap-servers localhost:9094 --rate 100 --limit 1000
 ```
 
+可选：生成一段新的可调参仿真交易流：
+
+```powershell
+.\.conda\ruikang\python.exe -m fraudsim.simulator.generate `
+  --dataset fp_fraudsim_injected `
+  --rows 10000 `
+  --fraud-ratio 0.04 `
+  --fraud-group-count 20 `
+  --fraud-group-size 12
+```
+
+输出位于：
+
+```text
+data/processed/fp_fraudsim_injected/simulations/<timestamp>/
+```
+
 Flink 作业会消费 `transaction_events`，输出：
 
 ```text
@@ -196,6 +215,7 @@ Dashboard 支持：
 6. 提交人工反馈
 7. 查看图分析挖掘出的疑似团伙、共享设备/IP/收款方证据和召回指标
 8. 拖拽、缩放团伙证据图，辅助人工研判和溯源分析
+9. 通过人工反馈池训练 candidate 模型，并支持发布与回滚
 ```
 
 总览页和实时页中的演示按钮支持任务状态展示。点击“挖掘欺诈团伙”后，页面会显示：
@@ -224,6 +244,7 @@ Dashboard 支持：
 
 ```powershell
 .\scripts\start_all.ps1 -Dataset fp_fraudsim_injected -ReplayLimit 1000 -ReplayRate 100
+.\scripts\start_all.ps1 -ApiKey demo-secret
 ```
 
 可选跳过项：
@@ -250,6 +271,51 @@ Dashboard 支持：
 ```
 
 默认情况下，一键启动后 Dashboard 的总览、实时、图挖掘、模型、指标和试算页都可直接使用。若通过 `-SkipGraphMining` 跳过预生成，图挖掘页仍可在首次访问或点击“挖掘欺诈团伙”时按需生成结果。
+
+## 8.1 安全、反馈与模型迭代
+
+启用 API Key 后，敏感接口需要 `X-API-Key`：
+
+```powershell
+$env:FRAUDSIM_API_KEY="demo-secret"
+docker compose -p fraudsim up -d --build model-api
+```
+
+使用 `scripts/start_all.ps1 -ApiKey demo-secret` 也可以一键启用；Dashboard 左侧 API Key 输入框保存后会自动为前端请求附加 `X-API-Key`。
+
+人工反馈会同时写入 Kafka `feedback_events` 和本地反馈池：
+
+```text
+data/processed/{dataset}/feedback/feedback_pool.jsonl
+```
+
+使用反馈池训练候选模型：
+
+```powershell
+.\.conda\ruikang\python.exe -m fraudsim.training.train_with_feedback `
+  --dataset fp_fraudsim_injected `
+  --model lightgbm `
+  --feedback-path data\processed\fp_fraudsim_injected\feedback\feedback_pool.jsonl
+```
+
+候选模型、发布与回滚：
+
+```powershell
+Invoke-RestMethod "http://localhost:8000/models/lightgbm/candidate"
+Invoke-RestMethod "http://localhost:8000/models/promote" -Method Post -ContentType "application/json" -Body '{"model_name":"lightgbm"}'
+Invoke-RestMethod "http://localhost:8000/models/rollback" -Method Post -ContentType "application/json" -Body '{"model_name":"lightgbm"}'
+Invoke-RestMethod "http://localhost:8000/audit/recent"
+```
+
+更多说明：
+
+```text
+docs/model_iteration.md
+docs/security_design.md
+docs/hybrid_cloud_deployment.md
+docs/performance_report.md
+docs/feature_explanation.md
+```
 
 ## 9. 验证方式
 

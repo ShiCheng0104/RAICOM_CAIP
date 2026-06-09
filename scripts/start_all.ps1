@@ -4,6 +4,7 @@ param(
   [int]$ReplayRate = 100,
   [string]$ProjectName = "fraudsim",
   [string]$PythonExe = ".\.conda\ruikang\python.exe",
+  [string]$ApiKey = "",
   [switch]$SkipTrain,
   [switch]$SkipGraphMining,
   [switch]$SkipReplay
@@ -102,6 +103,9 @@ if (-not $SkipGraphMining) {
 
 Write-Step "Building and starting Docker services"
 $env:FRAUDSIM_DATASET = $Dataset
+if ($ApiKey) {
+  $env:FRAUDSIM_API_KEY = $ApiKey
+}
 Invoke-Checked docker compose -p $ProjectName up -d --build kafka redis model-api flink-jobmanager flink-taskmanager flink-risk-job
 
 Write-Step "Waiting for Model API"

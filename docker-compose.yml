@@ -45,6 +45,7 @@ services:
       FRAUDSIM_MODEL_PATH: /app/models/lightgbm/latest
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
       FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
+      FRAUDSIM_API_KEY: ${FRAUDSIM_API_KEY:-}
     volumes:
       - ./models:/app/models
       - ./data/processed:/app/data/processed
