@@ -2,7 +2,19 @@ from __future__ import annotations
 
 import unittest
 
-from fraudsim.api.app import dashboard, health, leaderboard, list_models, metrics, reload_model, ReloadRequest
+from fraudsim.api.app import (
+    ReloadRequest,
+    ThresholdSandboxRequest,
+    dashboard,
+    graphsage_metrics,
+    health,
+    leaderboard,
+    list_models,
+    metrics,
+    reload_model,
+    threshold_sandbox,
+    threshold_sandbox_defaults,
+)
 
 
 class ApiDashboardTests(unittest.TestCase):
@@ -24,6 +36,12 @@ class ApiDashboardTests(unittest.TestCase):
         result = reload_model(ReloadRequest(model_name="lightgbm"))
         self.assertTrue(result["loaded"])
         self.assertEqual(result["model_name"], "lightgbm")
+
+    def test_threshold_sandbox_and_graphsage_metrics(self) -> None:
+        self.assertTrue(threshold_sandbox_defaults()["available"])
+        result = threshold_sandbox(ThresholdSandboxRequest(medium_threshold=0.5, high_threshold=0.8))
+        self.assertEqual(result["rows"], result["decisions"]["pass"] + result["decisions"]["review"] + result["decisions"]["reject"])
+        self.assertTrue(graphsage_metrics()["available"])
 
 
 if __name__ == "__main__":

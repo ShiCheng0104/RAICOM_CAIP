@@ -1,0 +1,15 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-fraudsim.txt requirements-graph.txt /app/
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r /app/requirements-graph.txt
+
+COPY fraudsim /app/fraudsim
+COPY configs /app/configs
+
+CMD ["python", "-m", "fraudsim.graphsage_experiment", "--dataset", "fp_fraudsim_injected"]

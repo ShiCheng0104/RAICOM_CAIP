@@ -31,6 +31,7 @@ from fraudsim.graph_mining import (
 )
 from fraudsim.models.base import ModelArtifact
 from fraudsim.models.registry import available_adapters, get_model_adapter
+from fraudsim.threshold_sandbox import evaluate_thresholds
 
 
 class PredictRequest(BaseModel):
@@ -58,6 +59,11 @@ class DemoRunRequest(BaseModel):
 
 class PromoteModelRequest(BaseModel):
     model_name: str = Field(description="Model directory under models/.")
+
+
+class ThresholdSandboxRequest(BaseModel):
+    medium_threshold: float = Field(ge=0.0, le=1.0)
+    high_threshold: float = Field(ge=0.0, le=1.0)
 
 
 class AuditQuery(BaseModel):
@@ -126,6 +132,7 @@ class ModelRuntime:
 runtime = ModelRuntime()
 app = FastAPI(title="FP-FraudSim Model API", version="0.1.0")
 DEMO_RUNS: dict[str, dict[str, Any]] = {}
+_AUDIT_PRODUCER: Producer | None = None
 STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -151,6 +158,7 @@ def audit_path() -> Path:
 
 
 def audit_event(action: str, status: str, detail: dict[str, Any] | None = None, request: Request = None) -> None:
+    global _AUDIT_PRODUCER
     path = audit_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     row = {
@@ -162,6 +170,21 @@ def audit_event(action: str, status: str, detail: dict[str, Any] | None = None, 
     }
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    if os.getenv("FRAUDSIM_AUDIT_KAFKA_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        return
+    try:
+        if _AUDIT_PRODUCER is None:
+            _AUDIT_PRODUCER = Producer({"bootstrap.servers": kafka_bootstrap()})
+        topic = runtime.config.get("topics", {}).get("audit_events", "audit_events")
+        _AUDIT_PRODUCER.produce(
+            topic=topic,
+            key=action.encode("utf-8"),
+            value=json.dumps(row, ensure_ascii=False).encode("utf-8"),
+        )
+        _AUDIT_PRODUCER.poll(0)
+    except Exception:
+        # Local audit logging remains authoritative when the centralized sink is unavailable.
+        pass
 
 
 def feedback_pool_path() -> Path:
@@ -517,6 +540,49 @@ def metrics() -> dict[str, Any]:
 def leaderboard() -> dict[str, Any]:
     rows = _read_json(Path("models/leaderboard.json")) or []
     return {"rows": rows}
+
+
+@app.get("/threshold-sandbox")
+def threshold_sandbox_defaults() -> dict[str, Any]:
+    score_path = runtime.path / "evaluation_scores.parquet"
+    return {
+        "available": score_path.exists(),
+        "score_path": str(score_path),
+        "model_name": runtime.active_model,
+        "model_version": runtime.artifact.model_version if runtime.artifact else None,
+        "thresholds": active_thresholds() if runtime.loaded else None,
+    }
+
+
+@app.get("/graphsage/metrics")
+def graphsage_metrics() -> dict[str, Any]:
+    path = Path("models/graphsage_sidecar/latest/metrics.json")
+    return {"available": path.exists(), "path": str(path), "metrics": _read_json(path)}
+
+
+@app.post("/threshold-sandbox")
+def threshold_sandbox(payload: ThresholdSandboxRequest, request: Request = None) -> dict[str, Any]:
+    require_api_key(request)
+    score_path = runtime.path / "evaluation_scores.parquet"
+    if not score_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Threshold scorecard not found: {score_path}. Retrain the model to create it.",
+        )
+    try:
+        frame = pd.read_parquet(score_path, columns=["is_fraud", "risk_score"])
+        result = evaluate_thresholds(
+            frame["is_fraud"].to_numpy(),
+            frame["risk_score"].to_numpy(),
+            payload.medium_threshold,
+            payload.high_threshold,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    result["model_name"] = runtime.active_model
+    result["model_version"] = runtime.artifact.model_version if runtime.artifact else None
+    result["score_path"] = str(score_path)
+    return result
 
 
 @app.get("/graph/mining/summary")

@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraudsim-center
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fraudsim-center-models
+  namespace: fraudsim-center
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fraudsim-center-data
+  namespace: fraudsim-center
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: candidate-model-training
+  namespace: fraudsim-center
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: trainer
+              image: fraudsim/model-api:latest
+              command: ["python", "-m", "fraudsim.training.train_with_feedback"]
+              args: ["--dataset", "fp_fraudsim_injected", "--model", "lightgbm"]
+              resources:
+                requests: {cpu: "1", memory: "2Gi"}
+                limits: {cpu: "4", memory: "8Gi"}
+              volumeMounts:
+                - {name: models, mountPath: /app/models}
+                - {name: data, mountPath: /app/data/processed}
+          volumes:
+            - name: models
+              persistentVolumeClaim:
+                claimName: fraudsim-center-models
+            - name: data
+              persistentVolumeClaim:
+                claimName: fraudsim-center-data
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: graphsage-sidecar-training
+  namespace: fraudsim-center
+spec:
+  schedule: "0 3 * * 0"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: graphsage
+              image: fraudsim/graph-training:latest
+              command: ["python", "-m", "fraudsim.graphsage_experiment"]
+              args: ["--dataset", "fp_fraudsim_injected", "--max-edges", "80000", "--max-nodes", "30000"]
+              resources:
+                requests: {cpu: "2", memory: "4Gi"}
+                limits: {cpu: "8", memory: "16Gi"}
+              volumeMounts:
+                - {name: models, mountPath: /app/models}
+                - {name: data, mountPath: /app/data/processed}
+          volumes:
+            - name: models
+              persistentVolumeClaim:
+                claimName: fraudsim-center-models
+            - name: data
+              persistentVolumeClaim:
+                claimName: fraudsim-center-data

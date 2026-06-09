@@ -2,6 +2,43 @@
 
 本项目实现了一个面向金融欺诈交易识别的最小可落地系统：离线训练多模型，在线通过 FastAPI 推理，使用 Kafka + Flink 做交易流处理，并提供 HTML Dashboard 观察模型、指标、实时结果和人工反馈。
 
+## 当前完成状态
+
+项目当前已经形成可演示、可训练、可验证的完整闭环：
+
+```text
+多源异构数据融合
+  -> 多维特征与图画像
+  -> LightGBM / 多模型离线训练
+  -> Kafka + Flink 实时窗口与微批推理
+  -> 风险评分、等级、理由码与团伙证据
+  -> Dashboard 人工审核
+  -> candidate / latest / rollback 模型迭代
+```
+
+当前已完成：
+
+```text
+1. 可调参交易仿真、跨渠道交易回放和实时检测
+2. LightGBM 主模型、多模型对比和模型热插拔
+3. Kafka + PyFlink + Redis + FastAPI 流式链路
+4. Flink 微批推理、尾批刷新和性能验证
+5. 可解释图分析团伙挖掘与 GraphSAGE 旁路实验
+6. 阈值沙盒、人工反馈、候选模型发布与回滚
+7. API Key、本地审计与 Kafka 集中审计
+8. Docker Compose 一键启动与 Kubernetes 混合云部署清单
+```
+
+Kubernetes 当前状态：
+
+```text
+暂不实施真实 K8s 集群部署。
+已完成边缘侧/中心侧部署清单、PVC、Secret、NetworkPolicy、Flink 风险作业和训练 CronJob 设计。
+20 个 K8s 资源已通过 kubeconform 严格 schema 校验；真实集群部署、跨云网络和故障恢复压测留作后续工作。
+```
+
+最终答辩材料见 `答辩方案最终版.md`。
+
 ## 1. 目录说明
 
 ```text
@@ -14,6 +51,8 @@ Dockerfile                训练与 Model API 镜像
 Dockerfile.flink          PyFlink 作业镜像
 requirements-fraudsim.txt 本地训练与 API 依赖
 requirements-flink.txt    Flink 镜像内 Python 依赖
+requirements-graph.txt    GraphSAGE 旁路实验可选依赖
+Dockerfile.graph          中心云图训练镜像
 docs/                     安全、混合云、模型迭代、特征解释文档
 ```
 
@@ -216,6 +255,8 @@ Dashboard 支持：
 7. 查看图分析挖掘出的疑似团伙、共享设备/IP/收款方证据和召回指标
 8. 拖拽、缩放团伙证据图，辅助人工研判和溯源分析
 9. 通过人工反馈池训练 candidate 模型，并支持发布与回滚
+10. 在指标页使用阈值沙盒评估拦截量、误报率、召回和审核工作量
+11. 查看 GraphSAGE 旁路实验指标
 ```
 
 总览页和实时页中的演示按钮支持任务状态展示。点击“挖掘欺诈团伙”后，页面会显示：
@@ -251,6 +292,7 @@ Dashboard 支持：
 
 ```powershell
 .\scripts\start_all.ps1 -SkipTrain
+.\scripts\start_all.ps1 -SkipScorecard
 .\scripts\start_all.ps1 -SkipGraphMining
 .\scripts\start_all.ps1 -SkipReplay
 ```
@@ -260,14 +302,15 @@ Dashboard 支持：
 ```text
 1. 检查本地 Python 环境
 2. 检查或训练 LightGBM 模型
-3. 预生成图挖掘产物，保证图挖掘页可直接展示
-4. 将 -Dataset 写入容器环境，保证 API、演示按钮、Flink 与脚本使用同一数据集
-5. 构建并启动 Docker 容器
-6. 创建 Kafka topics
-7. 初始化 Redis 画像
-8. 回放交易流
-9. 输出 API / Dashboard / Flink UI 地址
-10. 打印基础验证结果
+3. 补建阈值沙盒 scorecard，保证指标页可直接调阈值
+4. 预生成图挖掘产物，保证图挖掘页可直接展示
+5. 将 -Dataset 写入容器环境，保证 API、演示按钮、Flink 与脚本使用同一数据集
+6. 构建并启动 Docker 容器
+7. 创建 Kafka topics
+8. 初始化 Redis 画像
+9. 回放交易流
+10. 输出 API / Dashboard / Flink UI 地址
+11. 打印基础验证结果
 ```
 
 默认情况下，一键启动后 Dashboard 的总览、实时、图挖掘、模型、指标和试算页都可直接使用。若通过 `-SkipGraphMining` 跳过预生成，图挖掘页仍可在首次访问或点击“挖掘欺诈团伙”时按需生成结果。
@@ -315,6 +358,31 @@ docs/security_design.md
 docs/hybrid_cloud_deployment.md
 docs/performance_report.md
 docs/feature_explanation.md
+docs/graphsage_and_threshold_sandbox.md
+```
+
+GraphSAGE 旁路实验：
+
+```powershell
+.\.conda\ruikang\python.exe -m pip install -r requirements-graph.txt
+.\.conda\ruikang\python.exe -m fraudsim.graphsage_experiment `
+  --dataset fp_fraudsim_injected `
+  --max-edges 80000 `
+  --max-nodes 30000 `
+  --epochs 20
+```
+
+为已有模型生成阈值沙盒 scorecard：
+
+```powershell
+.\.conda\ruikang\python.exe -m fraudsim.training.build_scorecard --dataset fp_fraudsim_injected --model lightgbm
+```
+
+Kubernetes 混合云演示清单位于 `deploy/k8s/`。项目暂不实施真实 K8s 集群部署；当前可运行结构测试与离线 schema 校验：
+
+```powershell
+.\.conda\ruikang\python.exe -m unittest tests.test_k8s_manifests
+docker run --rm -v "${PWD}:/work" ghcr.io/yannh/kubeconform:latest -summary -strict /work/deploy/k8s/edge.yaml /work/deploy/k8s/center.yaml
 ```
 
 ## 9. 验证方式
@@ -347,6 +415,12 @@ docker exec fraudsim-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-
 
 ```powershell
 docker exec fraudsim-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic alert_events --from-beginning --max-messages 5
+```
+
+查看集中审计日志：
+
+```powershell
+docker exec fraudsim-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic audit_events --from-beginning --max-messages 10
 ```
 
 运行单元测试：

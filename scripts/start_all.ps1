@@ -6,6 +6,7 @@ param(
   [string]$PythonExe = ".\.conda\ruikang\python.exe",
   [string]$ApiKey = "",
   [switch]$SkipTrain,
+  [switch]$SkipScorecard,
   [switch]$SkipGraphMining,
   [switch]$SkipReplay
 )
@@ -92,6 +93,18 @@ if ((-not $SkipTrain) -and (-not (Test-Path $ModelPath))) {
   Write-Host "[start-all] Found $ModelPath"
 } else {
   Write-Warning "[start-all] SkipTrain is set and model artifact is missing. model-api may fail to load a model."
+}
+
+if ((-not $SkipScorecard) -and (Test-Path $ModelPath)) {
+  $ScorecardPath = "models\lightgbm\latest\evaluation_scores.parquet"
+  if (-not (Test-Path $ScorecardPath)) {
+    Write-Step "Building threshold sandbox scorecard"
+    Invoke-Checked $PythonExe -m fraudsim.training.build_scorecard --dataset $Dataset --model lightgbm
+  } else {
+    Write-Host "[start-all] Found $ScorecardPath"
+  }
+} elseif ($SkipScorecard) {
+  Write-Warning "[start-all] SkipScorecard is set. The Dashboard threshold sandbox may be unavailable."
 }
 
 if (-not $SkipGraphMining) {

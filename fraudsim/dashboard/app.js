@@ -16,6 +16,8 @@ const state = {
   fraudRingZoom: 1,
   selectedMetricsModel: null,
   graphMiningLoading: false,
+  thresholdResult: null,
+  graphSageMetrics: null,
 };
 
 const FRAUD_RING_VIEWBOX = {
@@ -253,11 +255,12 @@ async function refreshAll() {
   const apiDot = document.getElementById("apiDot");
   const apiState = document.getElementById("apiState");
   try {
-    const [models, metrics, leaderboard, demoActions] = await Promise.all([
+    const [models, metrics, leaderboard, demoActions, graphSage] = await Promise.all([
       api("/models"),
       api("/metrics"),
       api("/leaderboard"),
       api("/demo/actions"),
+      api("/graphsage/metrics"),
     ]);
     state.health = models.active;
     state.models = models.models || [];
@@ -265,6 +268,7 @@ async function refreshAll() {
     state.metrics = metrics;
     state.leaderboard = leaderboard.rows || [];
     state.demoActions = demoActions.actions || [];
+    state.graphSageMetrics = graphSage.metrics || null;
     await refreshGraphMining(false);
     apiDot.className = "dot ok";
     apiState.textContent = "API 正常";
@@ -392,6 +396,7 @@ function renderOverview() {
   setText("overviewGraphCount", fmt(Number((state.graphSummary && state.graphSummary.detected_group_count) || state.graphGroups.length || 0), 0));
   setText("overviewGraphPurity", pct(highConfidence.flagged_row_precision_vs_injection ?? state.graphSummary?.flagged_row_precision_vs_injection));
   setText("overviewEvalCount", fmt(state.leaderboard.length, 0));
+  setText("overviewGraphSagePr", fmt(state.graphSageMetrics?.pr_auc));
 
   const selector = document.getElementById("overviewModelSelect");
   if (selector) {
@@ -565,6 +570,27 @@ function renderMetrics() {
     board.textContent = "暂无 leaderboard";
   }
   renderModelChart();
+  renderGraphSageMetrics();
+}
+
+function renderGraphSageMetrics() {
+  const box = document.getElementById("graphSageMetrics");
+  if (!box) return;
+  const metrics = state.graphSageMetrics;
+  if (!metrics) {
+    box.textContent = "暂无 GraphSAGE 实验产物";
+    return;
+  }
+  box.innerHTML = `
+    <div class="metric-card-grid">
+      ${renderReadableMetric("采样节点", fmt(metrics.sampled_nodes, 0), `边 ${fmt(metrics.sampled_edges, 0)}`)}
+      ${renderReadableMetric("样本欺诈率", pct(metrics.fraud_node_ratio), "受控图采样")}
+      ${renderReadableMetric("PR-AUC", fmt(metrics.pr_auc), "节点风险排序")}
+      ${renderReadableMetric("ROC-AUC", fmt(metrics.roc_auc), "节点区分能力")}
+      ${renderReadableMetric("F1@0.5", fmt(metrics.f1_at_0_5), "旁路阈值")}
+      ${renderReadableMetric("用途", "旁路实验", "不直接改变线上决策")}
+    </div>
+  `;
 }
 
 function renderReadableMetric(label, value, hint) {
@@ -603,6 +629,65 @@ function renderModelChart() {
       <strong>F1 ${fmt(f1)}</strong>
     `;
     chart.appendChild(row);
+  }
+}
+
+function updateThresholdLabels() {
+  const medium = document.getElementById("mediumThreshold");
+  const high = document.getElementById("highThreshold");
+  setText("mediumThresholdValue", Number(medium?.value || 0.5).toFixed(2));
+  setText("highThresholdValue", Number(high?.value || 0.8).toFixed(2));
+}
+
+function renderThresholdResult(result) {
+  const box = document.getElementById("thresholdResult");
+  if (!box) return;
+  if (!result) {
+    box.textContent = "点击评估阈值查看业务影响";
+    return;
+  }
+  const decisions = result.decisions || {};
+  const metrics = result.high_risk_metrics || {};
+  const workload = result.workload || {};
+  box.innerHTML = `
+    <div class="metric-card-grid threshold-metrics">
+      ${renderReadableMetric("高风险拦截", fmt(decisions.reject, 0), `拦截率 ${pct(workload.reject_rate)}`)}
+      ${renderReadableMetric("人工审核", fmt(decisions.review, 0), `审核率 ${pct(workload.review_rate)}`)}
+      ${renderReadableMetric("拦截精度", pct(metrics.precision), `误拦 ${fmt(metrics.false_positive, 0)} 笔`)}
+      ${renderReadableMetric("欺诈召回", pct(metrics.recall), `漏过 ${fmt(metrics.missed_fraud, 0)} 笔`)}
+      ${renderReadableMetric("F1", fmt(metrics.f1), "精度与召回综合")}
+      ${renderReadableMetric("误报率 FPR", pct(metrics.false_positive_rate), `测试样本 ${fmt(result.rows, 0)} 笔`)}
+    </div>
+    <div class="decision-bar" aria-label="阈值决策分布">
+      <span class="pass" style="width:${(decisions.pass / result.rows) * 100}%"></span>
+      <span class="review" style="width:${(decisions.review / result.rows) * 100}%"></span>
+      <span class="reject" style="width:${(decisions.reject / result.rows) * 100}%"></span>
+    </div>
+    <div class="decision-legend">
+      <span><i class="pass"></i>放行 ${fmt(decisions.pass, 0)}</span>
+      <span><i class="review"></i>审核 ${fmt(decisions.review, 0)}</span>
+      <span><i class="reject"></i>拦截 ${fmt(decisions.reject, 0)}</span>
+    </div>
+  `;
+}
+
+async function evaluateThresholds() {
+  const box = document.getElementById("thresholdResult");
+  const medium = Number(document.getElementById("mediumThreshold").value);
+  const high = Number(document.getElementById("highThreshold").value);
+  if (medium >= high) {
+    box.textContent = "人工审核阈值必须低于高风险拦截阈值";
+    return;
+  }
+  box.textContent = "正在计算测试集阈值影响...";
+  try {
+    state.thresholdResult = await api("/threshold-sandbox", {
+      method: "POST",
+      body: JSON.stringify({ medium_threshold: medium, high_threshold: high }),
+    });
+    renderThresholdResult(state.thresholdResult);
+  } catch (error) {
+    box.textContent = error.message;
   }
 }
 
@@ -1394,8 +1479,12 @@ bind("reloadBtn", "click", async () => {
 });
 bind("sampleBtn", "click", () => setSampleForm(sampleRecord));
 bind("predictBtn", "click", predict);
+bind("thresholdEvaluateBtn", "click", evaluateThresholds);
+bind("mediumThreshold", "input", updateThresholdLabels);
+bind("highThreshold", "input", updateThresholdLabels);
 
 normalizeCountryInputs();
 loadApiKey();
 setSampleForm(sampleRecord);
+updateThresholdLabels();
 refreshAll();

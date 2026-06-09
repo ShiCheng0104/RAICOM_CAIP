@@ -67,3 +67,23 @@ python -m fraudsim.streaming.batch_risk_worker --bootstrap-servers localhost:909
 
 当前环境用单机 Docker 模拟混合云最小部署单元；生产环境中，Kafka/Flink/Redis/Model API 可迁移到边缘或私有云，离线训练和图挖掘放在中心云，通过加密通道同步模型与反馈样本。
 
+## Kubernetes 演示清单
+
+项目提供：
+
+```text
+deploy/k8s/edge.yaml
+deploy/k8s/center.yaml
+deploy/k8s/README.md
+```
+
+边缘侧清单包含 Kafka、Redis、双副本 Model API、Flink、Secret 和 NetworkPolicy；中心侧清单包含反馈候选训练和 GraphSAGE 旁路实验 CronJob。未启用 Kubernetes 的本机通过 `tests/test_k8s_manifests.py` 做结构验收，启用集群后再执行真实部署验收。
+
+离线 Kubernetes schema 校验结果：
+
+```text
+20 resources found
+Valid: 20
+Invalid: 0
+Errors: 0
+```
