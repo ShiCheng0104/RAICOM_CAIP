@@ -292,7 +292,9 @@ Dashboard 支持：
 
 ```powershell
 .\scripts\start_all.ps1 -SkipTrain
+.\scripts\start_all.ps1 -SkipDependencyInstall
 .\scripts\start_all.ps1 -SkipScorecard
+.\scripts\start_all.ps1 -SkipGraphSage
 .\scripts\start_all.ps1 -SkipGraphMining
 .\scripts\start_all.ps1 -SkipReplay
 ```
@@ -300,20 +302,19 @@ Dashboard 支持：
 脚本会自动执行：
 
 ```text
-1. 检查本地 Python 环境
+1. 检查本地 Python 环境并自动补装缺失依赖
 2. 检查或训练 LightGBM 模型
 3. 补建阈值沙盒 scorecard，保证指标页可直接调阈值
-4. 预生成图挖掘产物，保证图挖掘页可直接展示
-5. 将 -Dataset 写入容器环境，保证 API、演示按钮、Flink 与脚本使用同一数据集
-6. 构建并启动 Docker 容器
-7. 创建 Kafka topics
-8. 初始化 Redis 画像
-9. 回放交易流
-10. 输出 API / Dashboard / Flink UI 地址
-11. 打印基础验证结果
+4. 准备 GraphSAGE 指标与图挖掘产物
+5. 强制重建并启动最新 Kafka、Redis 和 Model API
+6. 创建 Kafka topics 并初始化 Redis 画像
+7. 强制重建并启动 Flink，等待作业进入 RUNNING
+8. 回放交易流并等待 risk_results 实时输出
+9. 验证 Dashboard、阈值沙盒、GraphSAGE、图挖掘、模型和指标接口
+10. 输出 API / Dashboard / Flink UI 地址和完整验证结果
 ```
 
-默认情况下，一键启动后 Dashboard 的总览、实时、图挖掘、模型、指标和试算页都可直接使用。若通过 `-SkipGraphMining` 跳过预生成，图挖掘页仍可在首次访问或点击“挖掘欺诈团伙”时按需生成结果。
+默认情况下，一键启动后 Dashboard 的总览、实时、图挖掘、模型、指标和试算页都可直接使用。脚本会始终执行 `--build`，避免代码或前端已更新但容器仍运行旧镜像。若通过跳过参数关闭某项准备工作，对应 Dashboard 功能可能暂时不可用。
 
 ## 8.1 安全、反馈与模型迭代
 

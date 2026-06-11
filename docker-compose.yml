@@ -114,6 +114,7 @@ services:
       FRAUDSIM_SCORING_MODE: ${FRAUDSIM_SCORING_MODE:-microbatch}
       FRAUDSIM_BATCH_SIZE: ${FRAUDSIM_BATCH_SIZE:-50}
       FRAUDSIM_BATCH_LINGER_MS: ${FRAUDSIM_BATCH_LINGER_MS:-300}
+      FRAUDSIM_API_KEY: ${FRAUDSIM_API_KEY:-}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
     depends_on:
@@ -135,6 +136,7 @@ services:
     environment:
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
       FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
+      FRAUDSIM_API_KEY: ${FRAUDSIM_API_KEY:-}
     volumes:
       - ./models:/app/models
       - ./data/processed:/app/data/processed:ro
@@ -185,6 +187,7 @@ services:
       FRAUDSIM_KAFKA_BOOTSTRAP: kafka:9092
       FRAUDSIM_REDIS_URL: redis://redis:6379/0
       FRAUDSIM_API_URL: http://model-api:8000
+      FRAUDSIM_API_KEY: ${FRAUDSIM_API_KEY:-}
       FRAUDSIM_CONFIG: /app/configs/fraudsim.yaml
       FRAUDSIM_DATASET: ${FRAUDSIM_DATASET:-fp_fraudsim_injected}
     depends_on:

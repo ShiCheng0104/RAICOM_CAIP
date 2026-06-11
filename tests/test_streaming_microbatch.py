@@ -35,6 +35,14 @@ class _FakeSession:
 
 
 class MicroBatchWindowScorerTest(unittest.TestCase):
+    def test_configures_api_key_header(self):
+        scorer = MicroBatchWindowScorer(
+            api_url="http://model-api:8000",
+            redis_url="redis://redis:6379/0",
+            api_key="demo-secret",
+        )
+        self.assertEqual(scorer.http_session.headers["X-API-Key"], "demo-secret")
+
     def test_flushes_records_together(self):
         scorer = MicroBatchWindowScorer(
             api_url="http://model-api:8000",
