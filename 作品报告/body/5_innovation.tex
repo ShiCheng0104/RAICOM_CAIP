@@ -5,7 +5,7 @@
 
 \textbf{第一，系统级闭环而非单点模型。}本作品将欺诈样本注入、交易流回放、Flink实时计算、模型API、Dashboard展示、人工反馈和重训接口串联为闭环，能够直接演示“新增交易进入系统、实时评分、告警输出、人工复核、模型迭代”的完整过程，更贴近真实金融风控系统。
 
-\textbf{第二，窗口特征与画像特征在线一致。}离线训练通过\texttt{add\_offline\_window\_features}构造窗口统计，在线Flink作业使用同一套\texttt{compute\_window\_feature\_dict}逻辑实时计算，降低训练/推理特征偏差。画像数据通过Redis按实体ID补齐，兼顾实时性和特征丰富度。
+\textbf{第二，窗口特征与画像特征在线一致。}离线训练通过\code{add\_offline\_window\_features}构造窗口统计，在线Flink作业使用同一套\code{compute\_window\_feature\_dict}逻辑实时计算，降低训练/推理特征偏差。画像数据通过Redis按实体ID补齐，兼顾实时性和特征丰富度。
 
 \textbf{第三，可解释图挖掘与GraphSAGE旁路并行。}系统围绕共享设备、IP、商户和收款方生成团伙证据链，同时以GraphSAGE旁路实验验证图嵌入价值。线上决策不直接使用未经充分验证的图嵌入，体现对创新探索与主链路稳定性的平衡。
 
@@ -23,7 +23,7 @@
 
 \subsection{成熟度与可扩展性}
 
-代码结构按功能模块拆分，\texttt{fraudsim/models}负责模型适配，\texttt{fraudsim/training}负责训练，\texttt{fraudsim/streaming}负责流式链路，\texttt{fraudsim/api}负责服务接口，\texttt{fraudsim/dashboard}负责前端展示，\texttt{scripts}负责数据、启动和压测。新增模型只需实现统一适配器并注册；新增欺诈场景可在注入脚本中扩展；新增画像字段可通过特征配置自动进入训练与推理；新增下游系统可订阅Kafka输出主题。
+代码结构按功能模块拆分，\code{fraudsim/models}负责模型适配，\code{fraudsim/training}负责训练，\code{fraudsim/streaming}负责流式链路，\code{fraudsim/api}负责服务接口，\code{fraudsim/dashboard}负责前端展示，\code{scripts}负责数据、启动和压测。新增模型只需实现统一适配器并注册；新增欺诈场景可在注入脚本中扩展；新增画像字段可通过特征配置自动进入训练与推理；新增下游系统可订阅Kafka输出主题。
 
 系统提供Dockerfile、Dockerfile.flink、Dockerfile.graph和docker-compose.yml，使运行环境可复制；同时提供边缘实时侧与中心训练侧Kubernetes清单。边缘清单包含双副本Model API、Flink、Kafka、Redis、Secret和NetworkPolicy，中心清单包含候选模型训练与GraphSAGE实验CronJob。离线结构校验结果为20个资源有效、0个无效、0个错误。
 
@@ -33,8 +33,8 @@
 
 \begin{enumerate}
   \item \textbf{数据最小化与脱敏：}训练和展示层仅使用实体ID哈希值，不展示姓名、证件号、手机号、银行卡号等直接身份标识；演示数据使用仿真样本；
-  \item \textbf{敏感接口认证：}配置\texttt{FRAUDSIM\_API\_KEY}后，预测、反馈、重载、演示任务、模型发布和回滚等接口要求\texttt{X-API-Key}；
-  \item \textbf{双通道审计：}敏感操作同时写入本地\texttt{audit.jsonl}和Kafka的\texttt{audit\_events}主题，Kafka不可用时仍保留本地审计；
+  \item \textbf{敏感接口认证：}配置\code{FRAUDSIM\_API\_KEY}后，预测、反馈、重载、演示任务、模型发布和回滚等接口要求\code{X-API-Key}；
+  \item \textbf{双通道审计：}敏感操作同时写入本地\code{audit.jsonl}和Kafka的\code{audit\_events}主题，Kafka不可用时仍保留本地审计；
   \item \textbf{模型发布保护：}候选模型发布前自动备份当前线上模型，支持快速回滚；
   \item \textbf{部署隔离：}Kubernetes清单使用Secret注入密钥，并通过NetworkPolicy限制Model API访问范围；
   \item \textbf{生产增强方向：}实际部署中还需启用TLS/SASL、OAuth2或mTLS、实体ID令牌化、对象存储加密、RBAC与不可篡改审计留存。

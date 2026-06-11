@@ -7,12 +7,27 @@ FP-FraudSim采用离线训练与在线推理分层架构。离线侧负责数据
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\textwidth]{pic/fraudsim_system_architecture.png}
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[node distance=0.62cm and 0.65cm]
+    \node[flowcard=flowcyan] (source) {\textcolor{white}{\bfseries 数据生成}\nodepart{second}正常交易\\欺诈场景注入};
+    \node[flowcard=flowblue, right=of source] (kafka) {\textcolor{white}{\bfseries Kafka事件总线}\nodepart{second}交易主题\\结果与告警主题};
+    \node[flowcard=flowpurple, right=of kafka] (flink) {\textcolor{white}{\bfseries Flink实时计算}\nodepart{second}事件时间与窗口\\特征拼接};
+    \node[flowcard=floworange, right=of flink] (api) {\textcolor{white}{\bfseries 模型服务}\nodepart{second}风险评分\\理由码与阈值};
+    \node[flowcard=flowgreen, right=of api] (dashboard) {\textcolor{white}{\bfseries 风险看板}\nodepart{second}告警研判\\人工反馈};
+    \node[flowcard=flowblue, below=0.9cm of flink] (redis) {\textcolor{white}{\bfseries Redis画像库}\nodepart{second}用户、设备、IP\\商户与图特征};
+    \node[flowcard=flowpurple, below=0.9cm of api] (training) {\textcolor{white}{\bfseries 模型训练管理}\nodepart{second}候选训练、评估\\发布与回滚};
+    \draw[flowarrow] (source) -- (kafka); \draw[flowarrow] (kafka) -- (flink);
+    \draw[flowarrow] (flink) -- (api); \draw[flowarrow] (api) -- (dashboard);
+    \draw[flowarrow] (redis) -- (flink); \draw[flowarrow] (redis) -- (api);
+    \draw[flowarrow] (dashboard.south) |- (training.east);
+    \draw[flowarrow] (training) -- (api);
+  \end{tikzpicture}
+  }
   \caption{FP-FraudSim流式欺诈交易识别系统架构}
   \label{fig:fraudsim_architecture}
 \end{figure}
 
-部署上使用Docker Compose编排Kafka、Redis、Model API、Flink JobManager、Flink TaskManager和Flink风险作业，完成单机最小闭环验证。项目进一步提供\texttt{deploy/k8s/edge.yaml}和\texttt{center.yaml}：边缘/私有云实时侧部署Kafka、Redis、双副本Model API、Flink和NetworkPolicy；中心云训练侧以CronJob运行反馈候选训练和GraphSAGE旁路实验。清单包含PVC、Secret和资源约束，为后续接入对象存储、镜像仓库和跨云加密同步提供基础。
+部署上使用Docker Compose编排Kafka、Redis、Model API、Flink JobManager、Flink TaskManager和Flink风险作业，完成单机最小闭环验证。项目进一步提供\code{deploy/k8s/edge.yaml}和\code{center.yaml}：边缘/私有云实时侧部署Kafka、Redis、双副本Model API、Flink和NetworkPolicy；中心云训练侧以CronJob运行反馈候选训练和GraphSAGE旁路实验。清单包含PVC、Secret和资源约束，为后续接入对象存储、镜像仓库和跨云加密同步提供基础。
 
 \subsection{框架选型的合理性与先进性}
 
@@ -22,7 +37,7 @@ FP-FraudSim采用离线训练与在线推理分层架构。离线侧负责数据
 
 \subsection{流式处理链路}
 
-交易流从\texttt{transaction\_events}主题进入Flink。在线评分作业\texttt{fraudsim/streaming/flink\_job.py}实现两种评分模式：同步单笔评分和微批评分。微批模式根据批大小和等待时间聚合记录，默认批大小为50、等待时间为300毫秒，再调用FastAPI批量\texttt{/predict}接口，以降低HTTP调用开销。
+交易流从\code{transaction\_events}主题进入Flink。在线评分作业\code{fraudsim/streaming/flink\_job.py}实现两种评分模式：同步单笔评分和微批评分。微批模式根据批大小和等待时间聚合记录，默认批大小为50、等待时间为300毫秒，再调用FastAPI批量\code{/predict}接口，以降低HTTP调用开销。
 
 Flink作业对每条交易执行以下步骤：
 
@@ -32,10 +47,35 @@ Flink作业对每条交易执行以下步骤：
   \item 计算5分钟、10分钟和1小时窗口特征；
   \item 从Redis读取用户、设备、IP、商户和图画像；
   \item 调用模型服务输出风险分数、等级、处置动作和理由码；
-  \item 将完整结果写入\texttt{risk\_results}，将高风险结果写入\texttt{alert\_events}，将迟到事件写入\texttt{late\_events}。
+  \item 将完整结果写入\code{risk\_results}，将高风险结果写入\code{alert\_events}，将迟到事件写入\code{late\_events}。
 \end{enumerate}
 
 该设计满足赛题关于“交易发生的同时完成风险评估与欺诈判定”的要求，同时保留结果主题便于回放、审计和答辩展示。
+
+图~\ref{fig:realtime_decision_flow}进一步展示了单笔交易从进入流式链路到形成业务处置的过程。模型分数不是最终结果，系统还需要结合阈值、理由码和图证据生成可执行决策。
+
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[node distance=0.62cm and 0.55cm]
+    \node[flowcard=flowcyan] (event) {\textcolor{white}{\bfseries 交易事件}\nodepart{second}Kafka输入};
+    \node[flowcard=flowblue, right=of event] (feature) {\textcolor{white}{\bfseries Flink实时特征}\nodepart{second}窗口统计\\画像补齐};
+    \node[flowcard=flowpurple, right=of feature] (score) {\textcolor{white}{\bfseries 模型服务}\nodepart{second}风险分数\\理由码};
+    \node[decisioncard, right=0.7cm of score] (decision) {两级阈值判断};
+    \node[flowcard=flowgreen, above right=0.55cm and 0.8cm of decision] (pass) {\textcolor{white}{\bfseries 低风险}\nodepart{second}直接放行};
+    \node[flowcard=floworange, right=0.8cm of decision] (review) {\textcolor{white}{\bfseries 中风险}\nodepart{second}人工复核};
+    \node[flowcard=flowred, below right=0.55cm and 0.8cm of decision] (reject) {\textcolor{white}{\bfseries 高风险}\nodepart{second}拒绝并告警};
+    \draw[flowarrow] (event) -- (feature);
+    \draw[flowarrow] (feature) -- (score);
+    \draw[flowarrow] (score) -- (decision);
+    \draw[flowarrow] (decision) -- node[flowlabel, above, sloped]{低于审核阈值} (pass);
+    \draw[flowarrow] (decision) -- node[flowlabel, above]{介于两阈值} (review);
+    \draw[flowarrow] (decision) -- node[flowlabel, below, sloped]{高于拦截阈值} (reject);
+  \end{tikzpicture}
+  }
+  \caption{实时风险评分与分级处置流程}
+  \label{fig:realtime_decision_flow}
+\end{figure}
 
 \subsection{算法组合的合理性与先进性}
 
@@ -52,34 +92,68 @@ Flink作业对每条交易执行以下步骤：
 
 \subsection{模型训练与多模型管理}
 
-训练入口为\texttt{fraudsim/training/train.py}。脚本读取训练、验证和测试切分，合并窗口特征和图特征，自动剔除ID字段、控制字段和泄露字段，随后调用模型注册表中的适配器进行训练。当前项目支持LightGBM、XGBoost、CatBoost、sklearn逻辑回归、HistGradientBoosting等模型适配器，所有模型共享统一的特征配置、指标输出和产物目录结构。
+训练入口为\code{fraudsim/training/train.py}。脚本读取训练、验证和测试切分，合并窗口特征和图特征，自动剔除ID字段、控制字段和泄露字段，随后调用模型注册表中的适配器进行训练。当前项目支持LightGBM、XGBoost、CatBoost、sklearn逻辑回归、HistGradientBoosting等模型适配器，所有模型共享统一的特征配置、指标输出和产物目录结构。
 
 训练产物包括：
 
 \begin{itemize}
-  \item \texttt{model.pkl}：模型本体、模型元数据和特征配置；
-  \item \texttt{feature\_config.json}：特征列、类别列和数值缺失填充值；
-  \item \texttt{metrics.json}：PR-AUC、ROC-AUC、F1、Top 1\%召回、误报率和阈值校准报告；
-  \item \texttt{leaderboard.json}：不同模型在同一数据集上的排行榜。
-  \item \texttt{evaluation\_scores.parquet}：阈值沙盒使用的测试标签与风险分数。
+  \item \code{model.pkl}：模型本体、模型元数据和特征配置；
+  \item \code{feature\_config.json}：特征列、类别列和数值缺失填充值；
+  \item \code{metrics.json}：PR-AUC、ROC-AUC、F1、Top 1\%召回、误报率和阈值校准报告；
+  \item \code{leaderboard.json}：不同模型在同一数据集上的排行榜。
+  \item \code{evaluation\_scores.parquet}：阈值沙盒使用的测试标签与风险分数。
 \end{itemize}
 
-人工反馈通过\texttt{/feedback}同时写入Kafka的\texttt{feedback\_events}主题和本地反馈样本池。自适应训练脚本基于反馈生成\texttt{candidate}候选模型；\texttt{/models/promote}在发布前将当前\texttt{latest}备份为\texttt{rollback}，\texttt{/models/rollback}可快速恢复旧版本。该candidate/latest/rollback三段式生命周期避免新反馈样本直接覆盖线上模型。
+人工反馈通过\code{/feedback}同时写入Kafka的\code{feedback\_events}主题和本地反馈样本池。自适应训练脚本基于反馈生成\code{candidate}候选模型；\code{/models/promote}在发布前将当前\code{latest}备份为\code{rollback}，\code{/models/rollback}可快速恢复旧版本。该candidate/latest/rollback三段式生命周期避免新反馈样本直接覆盖线上模型。
+
+模型迭代采用受控闭环，如图~\ref{fig:model_lifecycle}所示。候选模型必须先完成离线评估与人工确认，发布失败或线上异常时可恢复回滚版本，避免自动重训直接影响实时交易。
+
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[node distance=0.7cm and 0.75cm]
+    \node[flowcard=flowcyan] (feedback) {\textcolor{white}{\bfseries 人工复核}\nodepart{second}反馈标签};
+    \node[flowcard=flowblue, right=of feedback] (pool) {\textcolor{white}{\bfseries 反馈样本池}\nodepart{second}质量检查\\样本合并};
+    \node[flowcard=flowpurple, right=of pool] (candidate) {\textcolor{white}{\bfseries Candidate}\nodepart{second}候选模型训练};
+    \node[flowcard=floworange, right=of candidate] (evaluate) {\textcolor{white}{\bfseries 离线评估}\nodepart{second}指标与冒烟测试};
+    \node[flowcard=flowgreen, right=of evaluate] (latest) {\textcolor{white}{\bfseries Latest}\nodepart{second}线上活动模型};
+    \node[flowcard=flowred, below=0.75cm of latest] (rollback) {\textcolor{white}{\bfseries Rollback}\nodepart{second}历史稳定版本};
+    \draw[flowarrow] (feedback) -- (pool);
+    \draw[flowarrow] (pool) -- (candidate);
+    \draw[flowarrow] (candidate) -- (evaluate);
+    \draw[flowarrow] (evaluate) -- node[flowlabel, above]{确认发布} (latest);
+    \draw[flowarrow] (latest) -- node[flowlabel, right]{发布前备份} (rollback);
+    \draw[flowarrow] (rollback.west) -| node[flowlabel, below, pos=0.25]{异常恢复} (evaluate.south);
+    \draw[flowarrow] (latest.north) |- ++(0,0.65) -| node[flowlabel, above, pos=0.25]{新反馈继续进入闭环} (feedback.north);
+  \end{tikzpicture}
+  }
+  \caption{反馈驱动的候选模型发布与回滚闭环}
+  \label{fig:model_lifecycle}
+\end{figure}
 
 \subsection{风险解释与理由码}
 
-API不仅输出风险分数，还根据交易上下文生成理由码。理由码规则位于\texttt{fraudsim/api/app.py}，覆盖金额偏离、高频交易、共享设备、风险IP、商户集中、欺诈邻域、团伙命中、共享IP集群等原因。例如，当交易金额超过用户平均金额三倍且超过绝对金额阈值时输出\texttt{amount\_deviation}；当设备10分钟内关联多个用户或历史绑定用户数过高时输出\texttt{shared\_device}；当付款方图挖掘团伙风险分较高时输出\texttt{fraud\_ring\_detected}。
+API不仅输出风险分数，还根据交易上下文生成理由码。理由码规则位于\code{fraudsim/api/app.py}，覆盖金额偏离、高频交易、共享设备、风险IP、商户集中、欺诈邻域、团伙命中、共享IP集群等原因。例如，当交易金额超过用户平均金额三倍且超过绝对金额阈值时输出\code{amount\_deviation}；当设备10分钟内关联多个用户或历史绑定用户数过高时输出\code{shared\_device}；当付款方图挖掘团伙风险分较高时输出\code{fraud\_ring\_detected}。
 
-理由码的作用是把黑盒模型输出转化为可解释证据，辅助人工复核和策略调优。对于高风险但未触发具体规则的交易，系统补充\texttt{model\_high\_score}，提示该风险主要来自模型综合判别。
+理由码的作用是把黑盒模型输出转化为可解释证据，辅助人工复核和策略调优。对于高风险但未触发具体规则的交易，系统补充\code{model\_high\_score}，提示该风险主要来自模型综合判别。
+
+图~\ref{fig:operation_scenarios}展示了欺诈行为产生的异常线索，图~\ref{fig:fraud_judgment_illustration}进一步说明系统如何完成诈骗判定：交易进入实时链路后，金额偏离、短时高频、设备/IP共享、风险商户和团伙关系等证据共同进入模型；模型输出连续风险分数和理由码，再由两级阈值分流为低风险放行、中风险复核和高风险拒绝告警。复核标签与处置结果回流至样本池，用于后续阈值调优和候选模型迭代。
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{pic/fraud_analyst_review.png}
+  \caption{多维证据融合与诈骗分级判定示意}
+  \label{fig:fraud_judgment_illustration}
+\end{figure}
 
 \subsection{图挖掘与团伙溯源}
 
 图挖掘模块以交易、账户、设备、IP、商户和收款方为节点，以交易、登录、设备使用、商户支付、转账等关系为边。模块通过共享资源筛选候选风险资源，再使用并查集构建连通分量，综合欺诈种子比例、用户规模、证据数量、共享设备/IP数量和场景数量计算团伙风险分。
 
-图挖掘输出四类产物：\texttt{fraud\_groups.parquet}记录疑似团伙列表；\texttt{entity\_graph\_risk.parquet}记录实体级团伙风险特征；\texttt{group\_evidence.jsonl}记录共享设备、IP、商户、收款方等证据；\texttt{graph\_mining\_summary.json}记录挖掘摘要。API提供团伙列表、团伙详情、实体风险和实体关联链路接口，Dashboard支持拖拽和缩放证据图，满足赛题对“可解释性与溯源分析”的要求。
+图挖掘输出四类产物：\code{fraud\_groups.parquet}记录疑似团伙列表；\code{entity\_graph\_risk.parquet}记录实体级团伙风险特征；\code{group\_evidence.jsonl}记录共享设备、IP、商户、收款方等证据；\code{graph\_mining\_summary.json}记录挖掘摘要。API提供团伙列表、团伙详情、实体风险和实体关联链路接口，Dashboard支持拖拽和缩放证据图，满足赛题对“可解释性与溯源分析”的要求。
 
 GraphSAGE旁路模块从统一图边中受控采样，使用节点类型、度数和邻居聚合训练两层模型，输出模型、节点嵌入、风险分数和实验指标。线上主模型继续使用稳定的基础图统计，GraphSAGE结果用于创新验证和后续融合研究。
 
 \subsection{可视化与演示交互}
 
-Dashboard由Model API静态托管，路径为\texttt{/dashboard}。页面支持查看健康状态、模型指标、Kafka近期消息、实时告警、单笔试算、人工反馈、模型切换、图挖掘结果、GraphSAGE旁路指标和阈值沙盒。演示按钮封装可调仿真、画像初始化、交易回放、候选重训和图挖掘任务，API返回任务状态与日志尾部，便于在一个界面完成闭环演示。
+Dashboard由Model API静态托管，路径为\code{/dashboard}。页面支持查看健康状态、模型指标、Kafka近期消息、实时告警、单笔试算、人工反馈、模型切换、图挖掘结果、GraphSAGE旁路指标和阈值沙盒。演示按钮封装可调仿真、画像初始化、交易回放、候选重训和图挖掘任务，API返回任务状态与日志尾部，便于在一个界面完成闭环演示。

@@ -24,6 +24,7 @@
 \usepackage[boxed,ruled,lined,linesnumbered]{algorithm2e}
 \usepackage{algorithmic}
 \usepackage{listings,lstautogobble}
+\usepackage{seqsplit}
 \lstset{
   basicstyle=\ttfamily\zihao{5},
   breaklines=true,
@@ -35,9 +36,49 @@
 \usepackage{appendix}
 \usepackage{unicode-math}
 \usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.multipart,fit,calc}
 
 % 当前环境缺少小标宋字体，使用系统宋体作为稳定替代，避免字体探测触发交互提示。
 \newcommand\xiaobiaosong{\songti}
+\newcommand{\code}[1]{\texttt{\seqsplit{#1}}}
+\definecolor{flowcyan}{HTML}{168B99}
+\definecolor{flowblue}{HTML}{1769AA}
+\definecolor{flowpurple}{HTML}{6653A5}
+\definecolor{flowgreen}{HTML}{4F8B45}
+\definecolor{floworange}{HTML}{C98520}
+\definecolor{flowred}{HTML}{C64A4A}
+\tikzset{
+  flowcard/.style={
+    rectangle split,
+    rectangle split parts=2,
+    rectangle split part align={center,center},
+    rectangle split part fill={#1,#1!6},
+    draw=#1,
+    line width=0.9pt,
+    rounded corners=2pt,
+    text width=2.35cm,
+    minimum height=1.25cm,
+    align=center,
+    text=black,
+    font=\songti\zihao{5},
+    inner sep=4pt
+  },
+  decisioncard/.style={
+    diamond,
+    aspect=2.0,
+    draw=floworange,
+    line width=0.8pt,
+    fill=floworange!6,
+    text=black,
+    text width=2.2cm,
+    align=center,
+    font=\songti\zihao{5}
+  },
+  flowarrow/.style={-{Latex[length=2.4mm]}, line width=0.9pt, draw=black!70},
+  flowlabel/.style={font=\songti\zihao{5}, align=center, fill=white, inner sep=1pt},
+  groupbox/.style={draw=#1, fill=none, rounded corners=3pt, line width=0.8pt, inner sep=8pt}
+}
 
 % 上标引用格式
 \makeatletter
@@ -48,6 +89,7 @@
 \setstretch{2.0}
 \setlength{\parindent}{2em}
 \setlength{\parskip}{0pt}
+\setlength{\emergencystretch}{3em}
 
 % 页面格式
 \geometry{left=3.17cm,right=3.17cm,top=2.54cm,bottom=2.54cm}

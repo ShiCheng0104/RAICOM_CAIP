@@ -9,7 +9,7 @@
 
 \subsection{正常交易与欺诈场景仿真}
 
-项目通过\texttt{scripts/scripts/etl/04\_inject\_fraud\_patterns.py}在基础交易数据上注入更贴近反诈场景的欺诈样本。该脚本保持原始统一数据集不变，输出增强后的\texttt{fp\_fraudsim\_injected}目录，并按训练集、验证集和测试集时间边界自动拆分新增样本。当前实现覆盖七类欺诈模式：
+项目通过\code{scripts/scripts/etl/04\_inject\_fraud\_patterns.py}在基础交易数据上注入更贴近反诈场景的欺诈样本。该脚本保持原始统一数据集不变，输出增强后的\code{fp\_fraudsim\_injected}目录，并按训练集、验证集和测试集时间边界自动拆分新增样本。当前实现覆盖七类欺诈模式：
 
 \begin{enumerate}
   \item \textbf{账户接管：}攻击者在异常设备或异常IP登录后发起高额交易，金额显著偏离用户历史均值；
@@ -21,17 +21,47 @@
   \item \textbf{设备团伙欺诈：}多个账户共享设备、IP或代理环境，构成可由图关系识别的团伙结构。
 \end{enumerate}
 
-注入脚本同步写入\texttt{fraud\_group\_id}、\texttt{injection\_scenario}、\texttt{scenario\_step}和\texttt{injection\_evidence}等字段，并扩展图边，便于后续进行监督训练、团伙挖掘和证据展示。
+图~\ref{fig:operation_scenarios}从业务场景说明正常交易与团伙欺诈的可观测差异。正常用户通常使用熟悉设备完成单次支付；团伙欺诈则表现为多个账户共享设备或IP，并集中向同一收款方转账。系统不会凭单一现象直接判定诈骗，而是将金额偏离、短时频次、设备/IP共享、商户风险和团伙关系等线索转换为多维特征，再交由模型与阈值策略综合判断。
 
-为支持答辩现场和压力测试，项目新增\texttt{fraudsim/simulator/generate.py}可调参数仿真器。该模块可配置总交易数、欺诈比例、团伙数量与规模、共享设备/IP强度、跨境比例、大额比例、夜间比例、生成速率和随机种子；输出交易流、独立标签文件和完整仿真配置。与固定场景注入脚本相比，可调仿真器能够在不修改代码的情况下生成不同难度、不同负载和不同团伙结构的测试流。
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{pic/financial_fraud_scenario.png}
+  \caption{正常支付与团伙欺诈的可观测行为差异}
+  \label{fig:operation_scenarios}
+\end{figure}
+
+注入脚本同步写入\code{fraud\_group\_id}、\code{injection\_scenario}、\code{scenario\_step}和\code{injection\_evidence}等字段，并扩展图边，便于后续进行监督训练、团伙挖掘和证据展示。
+
+为支持答辩现场和压力测试，项目新增\code{fraudsim/simulator/generate.py}可调参数仿真器。该模块可配置总交易数、欺诈比例、团伙数量与规模、共享设备/IP强度、跨境比例、大额比例、夜间比例、生成速率和随机种子；输出交易流、独立标签文件和完整仿真配置。与固定场景注入脚本相比，可调仿真器能够在不修改代码的情况下生成不同难度、不同负载和不同团伙结构的测试流。
+
+可调参数仿真与后续实时检测之间的关系如图~\ref{fig:simulation_flow}所示。仿真配置不仅决定欺诈样本形态，也决定交易流速率和团伙关系强度，从而支持功能验证、模型评估与压力测试。
+
+\begin{figure}[H]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[node distance=0.52cm]
+    \node[flowcard=flowcyan] (config) {\textcolor{white}{\bfseries 仿真参数}\nodepart{second}欺诈率、团伙规模\\共享设备/IP强度};
+    \node[flowcard=flowblue, right=of config] (base) {\textcolor{white}{\bfseries 基础交易流}\nodepart{second}正常交易样本\\统一字段结构};
+    \node[flowcard=floworange, right=of base] (mutate) {\textcolor{white}{\bfseries 场景变异}\nodepart{second}跨境、大额、夜间\\共享资源团伙};
+    \node[flowcard=flowpurple, right=of mutate] (output) {\textcolor{white}{\bfseries 仿真产物}\nodepart{second}交易流、标签文件\\完整配置};
+    \node[flowcard=flowgreen, right=of output] (stream) {\textcolor{white}{\bfseries Kafka回放}\nodepart{second}按配置速率发送\\进入实时检测};
+    \draw[flowarrow] (config) -- (base);
+    \draw[flowarrow] (base) -- (mutate);
+    \draw[flowarrow] (mutate) -- (output);
+    \draw[flowarrow] (output) -- (stream);
+  \end{tikzpicture}
+  }
+  \caption{可调参数交易仿真与流式回放流程}
+  \label{fig:simulation_flow}
+\end{figure}
 
 \subsection{跨时段与跨渠道建模}
 
-系统使用\texttt{timestamp}作为事件时间，训练侧保留按时间切分的\texttt{train/valid/test.parquet}，在线侧通过Producer按指定速率回放\texttt{transaction\_stream.jsonl}。交易渠道字段覆盖App、网页、小程序等入口，支付方式字段覆盖银行卡、转账等方式，时间特征包含小时、星期、是否周末、是否夜间等变量。Flink作业设置60秒watermark判断迟到事件，并将迟到交易输出到\texttt{late\_events}主题，体现真实流式场景下乱序和延迟数据处理能力。
+系统使用\code{timestamp}作为事件时间，训练侧保留按时间切分的\code{train/valid/test.parquet}，在线侧通过Producer按指定速率回放\code{transaction\_stream.jsonl}。交易渠道字段覆盖App、网页、小程序等入口，支付方式字段覆盖银行卡、转账等方式，时间特征包含小时、星期、是否周末、是否夜间等变量。Flink作业设置60秒watermark判断迟到事件，并将迟到交易输出到\code{late\_events}主题，体现真实流式场景下乱序和延迟数据处理能力。
 
 \subsection{多维特征体系}
 
-模型输入由离线特征和在线特征共同组成。训练脚本通过\texttt{fraudsim/features.py}合并交易日志与用户、设备、IP、商户画像，并排除标签泄露字段；\texttt{fraudsim/window\_features.py}构造与在线一致的短时窗口统计；\texttt{fraudsim/graph\_features.py}和\texttt{fraudsim/graph\_mining.py}提供实体图统计与团伙挖掘特征。
+模型输入由离线特征和在线特征共同组成。训练脚本通过\code{fraudsim/features.py}合并交易日志与用户、设备、IP、商户画像，并排除标签泄露字段；\code{fraudsim/window\_features.py}构造与在线一致的短时窗口统计；\code{fraudsim/graph\_features.py}和\code{fraudsim/graph\_mining.py}提供实体图统计与团伙挖掘特征。
 
 \begin{table}[H]
   \centering
@@ -58,4 +88,4 @@
 
 \subsection{标签、阈值与风险等级}
 
-系统训练目标为\texttt{is\_fraud}二分类标签。模型输出连续风险分数后，由API根据验证集阈值校准结果生成风险等级和处置动作：低风险交易放行，中风险交易进入人工复核，高风险交易拒绝并写入告警主题。训练过程同时保存\texttt{evaluation\_scores.parquet}，Dashboard阈值沙盒可调整人工审核阈值和高风险拦截阈值，实时计算放行量、审核量、拦截量、精度、召回、F1、误报率、误拦量和漏过量，使阈值选择从静态配置升级为可量化的业务决策。
+系统训练目标为\code{is\_fraud}二分类标签。模型输出连续风险分数后，由API根据验证集阈值校准结果生成风险等级和处置动作：低风险交易放行，中风险交易进入人工复核，高风险交易拒绝并写入告警主题。训练过程同时保存\code{evaluation\_scores.parquet}，Dashboard阈值沙盒可调整人工审核阈值和高风险拦截阈值，实时计算放行量、审核量、拦截量、精度、召回、F1、误报率、误拦量和漏过量，使阈值选择从静态配置升级为可量化的业务决策。

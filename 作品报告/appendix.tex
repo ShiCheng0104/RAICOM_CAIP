@@ -16,20 +16,20 @@
     \toprule
     路径 & 功能 \\
     \midrule
-    \texttt{fraudsim/features.py} & 交易、用户、设备、IP、商户画像合并与训练特征选择。 \\
-    \texttt{fraudsim/window\_features.py} & 离线和在线共享的滑动窗口特征计算。 \\
-    \texttt{fraudsim/training/train.py} & 多模型训练、阈值校准、指标输出和排行榜更新。 \\
-    \texttt{fraudsim/simulator/generate.py} & 可调参数交易流、团伙结构和独立标签生成。 \\
-    \texttt{fraudsim/threshold\_sandbox.py} & 两级业务阈值下的决策量、效果与工作量计算。 \\
-    \texttt{fraudsim/graphsage\_experiment.py} & GraphSAGE受控采样、旁路训练和节点嵌入输出。 \\
-    \texttt{fraudsim/streaming/flink\_job.py} & Flink实时评分作业，输出风险、告警和迟到事件。 \\
-    \texttt{fraudsim/api/app.py} & FastAPI模型服务、Dashboard接口、模型热切换、反馈和图挖掘接口。 \\
-    \texttt{fraudsim/graph\_mining.py} & 疑似欺诈团伙挖掘、实体风险特征和证据链生成。 \\
-    \texttt{fraudsim/dashboard/} & HTML、CSS、JavaScript实现的可视化看板。 \\
-    \texttt{scripts/scripts/etl/} & 数据规范化、统一数据集构建、校验和欺诈模式注入。 \\
-    \texttt{scripts/benchmark\_api\_latency.py} & 单笔和批量模型API延迟压测。 \\
-    \texttt{deploy/k8s/} & 边缘实时侧与中心训练侧Kubernetes演示清单。 \\
-    \texttt{tests/} & API、特征、窗口、微批、仿真、阈值、图学习和K8s结构测试。 \\
+    \code{fraudsim/features.py} & 交易、用户、设备、IP、商户画像合并与训练特征选择。 \\
+    \code{fraudsim/window\_features.py} & 离线和在线共享的滑动窗口特征计算。 \\
+    \code{fraudsim/training/train.py} & 多模型训练、阈值校准、指标输出和排行榜更新。 \\
+    \code{fraudsim/simulator/generate.py} & 可调参数交易流、团伙结构和独立标签生成。 \\
+    \code{fraudsim/threshold\_sandbox.py} & 两级业务阈值下的决策量、效果与工作量计算。 \\
+    \code{fraudsim/graphsage\_experiment.py} & GraphSAGE受控采样、旁路训练和节点嵌入输出。 \\
+    \code{fraudsim/streaming/flink\_job.py} & Flink实时评分作业，输出风险、告警和迟到事件。 \\
+    \code{fraudsim/api/app.py} & FastAPI模型服务、Dashboard接口、模型热切换、反馈和图挖掘接口。 \\
+    \code{fraudsim/graph\_mining.py} & 疑似欺诈团伙挖掘、实体风险特征和证据链生成。 \\
+    \code{fraudsim/dashboard/} & HTML、CSS、JavaScript实现的可视化看板。 \\
+    \code{scripts/scripts/etl/} & 数据规范化、统一数据集构建、校验和欺诈模式注入。 \\
+    \code{scripts/benchmark\_api\_latency.py} & 单笔和批量模型API延迟压测。 \\
+    \code{deploy/k8s/} & 边缘实时侧与中心训练侧Kubernetes演示清单。 \\
+    \code{tests/} & API、特征、窗口、微批、仿真、阈值、图学习和K8s结构测试。 \\
     \bottomrule
   \end{tabularx}
 \end{table}
