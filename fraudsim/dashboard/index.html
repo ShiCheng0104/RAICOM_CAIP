@@ -4,13 +4,37 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FP-FraudSim Risk Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260609_threshold_v1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260611_welcome_v1" />
   </head>
   <body>
+    <section id="welcomeScreen" class="welcome-screen" aria-labelledby="welcomeTitle">
+      <div class="welcome-visual">
+        <img src="/static/logo.png" alt="FP-FraudSim Logo" />
+      </div>
+      <div class="welcome-content">
+        <span class="welcome-kicker">金融交易全链路风险防控</span>
+        <h1 id="welcomeTitle">FP-FraudSim</h1>
+        <p>融合实时流处理、多模型识别与可解释图分析的智能反欺诈研判平台</p>
+        <div class="welcome-capabilities" aria-label="平台核心能力">
+          <div><strong>Kafka + Flink</strong><span>实时风险检测</span></div>
+          <div><strong>多模型协同</strong><span>训练与热切换</span></div>
+          <div><strong>图链路挖掘</strong><span>团伙识别与溯源</span></div>
+        </div>
+        <button id="enterDashboardBtn" class="welcome-enter" type="button">
+          <span>进入风控平台</span>
+          <span aria-hidden="true">→</span>
+        </button>
+        <div class="welcome-status">
+          <span id="welcomeApiDot" class="dot"></span>
+          <span id="welcomeApiState">正在连接风险服务</span>
+        </div>
+      </div>
+    </section>
+
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">FS</div>
+          <img class="brand-logo" src="/static/logo.png" alt="FP-FraudSim Logo" />
           <div>
             <h1>FP-FraudSim</h1>
             <p>Risk Operations</p>
@@ -20,6 +44,7 @@
           <button class="tab active" data-view="overview" type="button">总览</button>
           <button class="tab" data-view="stream" type="button">实时</button>
           <button class="tab" data-view="graphMining" type="button">图挖掘</button>
+          <button class="tab" data-view="profiles" type="button">用户画像</button>
           <button class="tab" data-view="models" type="button">模型</button>
           <button class="tab" data-view="metrics" type="button">指标</button>
           <button class="tab" data-view="predict" type="button">试算</button>
@@ -167,7 +192,13 @@
           <div class="panel graph-panel">
             <div class="panel-head">
               <h3>图链路可视化</h3>
-              <span id="graphHint" class="pill">点击左侧风险事件</span>
+              <div class="graph-tools">
+                <button id="streamGraphZoomOutBtn" class="icon-btn small" type="button" title="缩小">-</button>
+                <span id="streamGraphZoomLevel" class="pill">100%</span>
+                <button id="streamGraphZoomInBtn" class="icon-btn small" type="button" title="放大">+</button>
+                <button id="streamGraphZoomResetBtn" class="secondary-btn compact" type="button">重置</button>
+                <span id="graphHint" class="pill">点击用户查看画像</span>
+              </div>
             </div>
             <div class="graph-layout">
               <svg id="graphSvg" viewBox="0 0 720 300" role="img" aria-label="交易图链路"></svg>
@@ -216,7 +247,7 @@
                   <span id="fraudRingZoomLevel" class="pill">100%</span>
                   <button id="fraudRingZoomInBtn" class="icon-btn small" type="button" title="放大">+</button>
                   <button id="fraudRingZoomResetBtn" class="secondary-btn compact" type="button">重置</button>
-                  <span id="graphMiningHint" class="pill">点击左侧团伙</span>
+                  <span id="graphMiningHint" class="pill">拖空白平移 · 点用户看画像</span>
                 </div>
               </div>
               <div class="graph-evidence-body">
@@ -227,6 +258,39 @@
                 </div>
                 <svg id="fraudRingSvg" viewBox="0 0 820 420" role="img" aria-label="欺诈团伙链路"></svg>
                 <div id="graphMiningDetail" class="graph-detail graph-readable">暂无选中团伙</div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="profiles" class="view">
+          <div class="profile-layout">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h3>用户目录</h3>
+                  <span id="profileListCount" class="panel-subtitle">按历史风险排序</span>
+                </div>
+                <button id="profileRefreshBtn" class="secondary-btn compact" type="button">刷新</button>
+              </div>
+              <div class="profile-search">
+                <input id="profileSearchInput" type="search" placeholder="搜索用户 ID" />
+                <button id="profileSearchBtn" class="primary-btn" type="button">搜索</button>
+              </div>
+              <div id="profileUserRows" class="profile-user-list">正在加载用户画像</div>
+              <div class="profile-pager">
+                <button id="profilePrevBtn" class="secondary-btn compact" type="button">上一页</button>
+                <span id="profilePageState">第 1 页</span>
+                <button id="profileNextBtn" class="secondary-btn compact" type="button">下一页</button>
+              </div>
+            </section>
+            <section class="panel profile-detail-panel">
+              <div class="panel-head">
+                <h3>画像解释</h3>
+                <span class="pill">行为 · 设备 · IP · 图风险</span>
+              </div>
+              <div id="profileDetail" class="profile-detail">
+                <div class="readable-empty"><strong>选择用户查看画像</strong><p>可从左侧目录或链路图中的用户节点进入。</p></div>
               </div>
             </section>
           </div>
@@ -379,6 +443,16 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260609_threshold_v1"></script>
+    <div id="profileDrawerBackdrop" class="drawer-backdrop hidden"></div>
+    <aside id="profileDrawer" class="profile-drawer" aria-label="用户画像详情" aria-hidden="true">
+      <div class="profile-drawer-head">
+        <div><span>链路节点</span><h3>用户画像</h3></div>
+        <button id="profileDrawerCloseBtn" class="icon-btn" type="button" title="关闭">×</button>
+      </div>
+      <div id="profileDrawerDetail" class="profile-detail drawer-detail">正在加载画像</div>
+      <button id="profileDrawerOpenPageBtn" class="primary-btn drawer-page-btn" type="button">在用户画像页查看</button>
+    </aside>
+
+    <script src="/static/app.js?v=20260611_profiles_v1"></script>
   </body>
 </html>

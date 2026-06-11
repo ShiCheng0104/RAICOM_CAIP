@@ -132,6 +132,8 @@ class ModelRuntime:
 runtime = ModelRuntime()
 app = FastAPI(title="FP-FraudSim Model API", version="0.1.0")
 DEMO_RUNS: dict[str, dict[str, Any]] = {}
+USER_PROFILE_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
+ENTITY_RISK_CACHE: dict[str, tuple[float, pd.DataFrame]] = {}
 _AUDIT_PRODUCER: Producer | None = None
 STATIC_DIR = Path(__file__).resolve().parents[1] / "dashboard"
 if STATIC_DIR.exists():
@@ -358,6 +360,30 @@ def active_dataset_dir() -> Path:
     return resolve_dataset_dir(runtime.config, runtime.config.get("dataset", {}).get("name"))
 
 
+def load_user_profiles() -> pd.DataFrame:
+    path = active_dataset_dir() / "user_profile.parquet"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"User profile dataset not found: {path}")
+    cache_key = str(path.resolve())
+    modified = path.stat().st_mtime
+    cached = USER_PROFILE_CACHE.get(cache_key)
+    if cached is None or cached[0] != modified:
+        USER_PROFILE_CACHE[cache_key] = (modified, pd.read_parquet(path))
+    return USER_PROFILE_CACHE[cache_key][1]
+
+
+def load_entity_risks() -> pd.DataFrame | None:
+    path = entity_risk_path(active_dataset_dir())
+    if not path.exists():
+        return None
+    cache_key = str(path.resolve())
+    modified = path.stat().st_mtime
+    cached = ENTITY_RISK_CACHE.get(cache_key)
+    if cached is None or cached[0] != modified:
+        ENTITY_RISK_CACHE[cache_key] = (modified, pd.read_parquet(path))
+    return ENTITY_RISK_CACHE[cache_key][1]
+
+
 def _read_log_tail(path: Path, max_chars: int = 6000) -> str:
     if not path.exists():
         return ""
@@ -558,6 +584,80 @@ def threshold_sandbox_defaults() -> dict[str, Any]:
 def graphsage_metrics() -> dict[str, Any]:
     path = Path("models/graphsage_sidecar/latest/metrics.json")
     return {"available": path.exists(), "path": str(path), "metrics": _read_json(path)}
+
+
+@app.get("/profiles/users")
+def user_profiles(
+    limit: int = 50,
+    offset: int = 0,
+    query: str = "",
+    sort: str = "risk_history_score",
+    direction: str = "desc",
+) -> dict[str, Any]:
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be non-negative")
+    profiles = load_user_profiles()
+    allowed_sort = {
+        "risk_history_score",
+        "observed_fraud_rate",
+        "txn_count",
+        "total_amount",
+        "common_device_count",
+        "common_ip_count",
+        "user_id",
+    }
+    sort_column = sort if sort in allowed_sort and sort in profiles.columns else "risk_history_score"
+    filtered = profiles
+    clean_query = query.strip()
+    if clean_query:
+        filtered = filtered[filtered["user_id"].astype(str).str.contains(clean_query, case=False, regex=False)]
+    ascending = direction.lower() == "asc"
+    page = filtered.sort_values(sort_column, ascending=ascending, na_position="last").iloc[offset : offset + limit]
+    columns = [
+        column
+        for column in [
+            "user_id",
+            "txn_count",
+            "total_amount",
+            "observed_fraud_rate",
+            "risk_history_score",
+            "common_device_count",
+            "common_ip_count",
+            "home_country",
+            "is_black_user",
+        ]
+        if column in page.columns
+    ]
+    return {
+        "users": _json_records(page[columns]),
+        "total": int(len(profiles)),
+        "matched": int(len(filtered)),
+        "offset": offset,
+        "limit": limit,
+        "sort": sort_column,
+        "direction": "asc" if ascending else "desc",
+    }
+
+
+@app.get("/profiles/users/{user_id}")
+def user_profile_detail(user_id: str) -> dict[str, Any]:
+    profiles = load_user_profiles()
+    row = profiles[profiles["user_id"].astype(str) == user_id]
+    if row.empty:
+        raise HTTPException(status_code=404, detail=f"User profile not found: {user_id}")
+    graph_mining = None
+    features = load_entity_risks()
+    if features is not None:
+        graph_row = features[features["entity_id"].astype(str) == user_id]
+        if not graph_row.empty:
+            graph_mining = _json_records(graph_row.head(1))[0]
+    return {
+        "user_id": user_id,
+        "profile": _json_records(row.head(1))[0],
+        "graph_mining": graph_mining,
+    }
 
 
 @app.post("/threshold-sandbox")

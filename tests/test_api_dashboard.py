@@ -14,6 +14,8 @@ from fraudsim.api.app import (
     reload_model,
     threshold_sandbox,
     threshold_sandbox_defaults,
+    user_profile_detail,
+    user_profiles,
 )
 
 
@@ -42,6 +44,14 @@ class ApiDashboardTests(unittest.TestCase):
         result = threshold_sandbox(ThresholdSandboxRequest(medium_threshold=0.5, high_threshold=0.8))
         self.assertEqual(result["rows"], result["decisions"]["pass"] + result["decisions"]["review"] + result["decisions"]["reject"])
         self.assertTrue(graphsage_metrics()["available"])
+
+    def test_user_profile_list_and_detail(self) -> None:
+        result = user_profiles(limit=2)
+        self.assertGreater(result["total"], 0)
+        self.assertEqual(len(result["users"]), 2)
+        detail = user_profile_detail(result["users"][0]["user_id"])
+        self.assertIn("profile", detail)
+        self.assertEqual(detail["user_id"], detail["profile"]["user_id"])
 
 
 if __name__ == "__main__":
