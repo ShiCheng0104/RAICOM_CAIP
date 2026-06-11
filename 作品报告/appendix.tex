@@ -19,13 +19,17 @@
     \texttt{fraudsim/features.py} & 交易、用户、设备、IP、商户画像合并与训练特征选择。 \\
     \texttt{fraudsim/window\_features.py} & 离线和在线共享的滑动窗口特征计算。 \\
     \texttt{fraudsim/training/train.py} & 多模型训练、阈值校准、指标输出和排行榜更新。 \\
+    \texttt{fraudsim/simulator/generate.py} & 可调参数交易流、团伙结构和独立标签生成。 \\
+    \texttt{fraudsim/threshold\_sandbox.py} & 两级业务阈值下的决策量、效果与工作量计算。 \\
+    \texttt{fraudsim/graphsage\_experiment.py} & GraphSAGE受控采样、旁路训练和节点嵌入输出。 \\
     \texttt{fraudsim/streaming/flink\_job.py} & Flink实时评分作业，输出风险、告警和迟到事件。 \\
     \texttt{fraudsim/api/app.py} & FastAPI模型服务、Dashboard接口、模型热切换、反馈和图挖掘接口。 \\
     \texttt{fraudsim/graph\_mining.py} & 疑似欺诈团伙挖掘、实体风险特征和证据链生成。 \\
     \texttt{fraudsim/dashboard/} & HTML、CSS、JavaScript实现的可视化看板。 \\
     \texttt{scripts/scripts/etl/} & 数据规范化、统一数据集构建、校验和欺诈模式注入。 \\
     \texttt{scripts/benchmark\_api\_latency.py} & 单笔和批量模型API延迟压测。 \\
-    \texttt{tests/} & API、特征、窗口、流式微批和图解释单元测试。 \\
+    \texttt{deploy/k8s/} & 边缘实时侧与中心训练侧Kubernetes演示清单。 \\
+    \texttt{tests/} & API、特征、窗口、微批、仿真、阈值、图学习和K8s结构测试。 \\
     \bottomrule
   \end{tabularx}
 \end{table}
@@ -42,6 +46,7 @@ docker compose -p fraudsim up -d --build kafka redis model-api flink-jobmanager 
 # 创建主题、加载画像、回放交易流
 python -m fraudsim.streaming.topics --bootstrap-servers localhost:9094
 python -m fraudsim.streaming.load_profiles --dataset fp_fraudsim_injected --redis-url redis://localhost:6379/0
+python -m fraudsim.simulator.generate --dataset fp_fraudsim_injected --rows 1000 --fraud-ratio 0.05
 python -m fraudsim.streaming.producer --dataset fp_fraudsim_injected --bootstrap-servers localhost:9094 --rate 100 --limit 1000
 
 # 打开看板
@@ -62,9 +67,9 @@ http://localhost:8000/dashboard
     技术文档 & 本报告已覆盖任务理解、数据、特征、架构、模型、实验、安全和复现。 \\
     代码工程 & 根目录包含README、Dockerfile、docker-compose、训练、流式、API、Dashboard和测试代码。 \\
     数据与模型 & 大体积目录默认不入库，最终提交前应按赛事要求附带可复现数据包或下载/生成说明。 \\
-    指标报告 & 由\texttt{metrics.json}、\texttt{leaderboard.json}和API延迟报告提供。 \\
-    演示材料 & Dashboard可展示实时风险、告警、理由码、图团伙和人工反馈闭环。 \\
-    安全说明 & 正文第五节给出脱敏、加密、权限、审计、模型安全和容器隔离设计。 \\
+    指标报告 & 由模型指标、阈值沙盒、GraphSAGE指标和API延迟报告提供。 \\
+    演示材料 & Dashboard可展示实时风险、理由码、图团伙、阈值分析和受控模型迭代。 \\
+    安全说明 & 正文第五节给出API Key、双通道审计、发布回滚和部署隔离说明。 \\
     \bottomrule
   \end{tabularx}
 \end{table}

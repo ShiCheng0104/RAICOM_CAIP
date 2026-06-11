@@ -3,7 +3,7 @@
 
 \subsection{实验目标}
 
-本作品的实验验证围绕赛题一评分要求展开，重点不是追求单一离线指标，而是证明系统具备端到端可运行能力。实验分为四类：离线模型效果评估、实时链路功能验证、API延迟压测和团伙挖掘可解释性验证。
+本作品的实验验证围绕赛题一评分要求展开，重点证明系统具备端到端可运行能力。实验覆盖离线主模型、实时链路、API延迟、阈值策略、团伙挖掘、GraphSAGE旁路以及部署清单结构验证。
 
 \begin{table}[H]
   \centering
@@ -20,6 +20,8 @@
     实时链路验证 & 验证Kafka输入、Flink评分、告警输出和迟到事件输出 & \texttt{producer}、\texttt{flink\_job.py}、\texttt{/topics/\{topic\}/recent} \\
     API延迟压测 & 比较单笔评分与批量评分的平均、P50、P95、P99延迟 & \texttt{scripts/benchmark\_api\_latency.py} \\
     图挖掘验证 & 验证疑似团伙、共享资源证据、实体风险特征是否生成 & \texttt{python -m fraudsim.graph\_mining} \\
+    阈值与图学习 & 验证业务阈值影响和GraphSAGE图嵌入价值 & \texttt{/threshold-sandbox}、\texttt{graphsage\_experiment} \\
+    部署与安全 & 验证K8s资源结构、敏感接口认证和审计链路 & K8s单元测试、\texttt{/audit/recent} \\
     \bottomrule
   \end{tabularx}
   }
@@ -38,7 +40,7 @@ python -m fraudsim.training.train --dataset fp_fraudsim_injected --model catboos
 python -m fraudsim.training.train --dataset fp_fraudsim_injected --model sklearn_hgb
 \end{lstlisting}
 
-模型训练后，\texttt{models/leaderboard.json}会按PR-AUC排序，Dashboard的模型页会读取该排行榜。由于当前提交目录未包含大体积\texttt{data/}和\texttt{models/}产物，评审或答辩环境需要先按README完成数据准备和训练，再以生成的\texttt{metrics.json}作为最终实验数值。
+已记录的LightGBM主模型实验使用67个特征，在123,649条测试交易上取得PR-AUC 0.9727、ROC-AUC 0.9949、F1 0.9169，高风险阈值下误报率为0.338\%。模型训练后，\texttt{models/leaderboard.json}按PR-AUC排序。当前代码仓库未包含大体积数据和模型产物，复现时需按README完成数据准备与训练，并以重新生成的\texttt{metrics.json}核验结果。
 
 \subsection{实时检测链路复现}
 
@@ -53,19 +55,25 @@ python -m fraudsim.streaming.producer --dataset fp_fraudsim_injected --bootstrap
 
 风险结果可通过Dashboard查看，也可通过API读取Kafka近期消息。实时输出字段包括\texttt{transaction\_id}、\texttt{risk\_score}、\texttt{risk\_level}、\texttt{decision}、\texttt{reason\_codes}、模型名称、模型版本和评分时间。该输出满足赛题要求的“风险评估、欺诈判定和风险等级输出”。
 
-\subsection{性能测试方案}
+\subsection{性能测试结果}
 
-API延迟压测脚本会先调用\texttt{/health}确认模型已加载，再生成固定结构的样例交易，分别测试单笔\texttt{/predict}和批量\texttt{/predict}。报告写入\texttt{models/api\_latency\_microbatch\_report.json}，字段包括平均延迟、P50、P95、P99、批量单条均摊延迟和批量加速比。
+API延迟压测脚本先调用\texttt{/health}确认模型已加载，再分别测试单笔和批量\texttt{/predict}。本机Docker Compose实测中，单笔请求平均延迟115.78毫秒，P95为156.55毫秒，P99为240.30毫秒；每批25条时，批量请求平均耗时125.00毫秒，平均单条折算为5.00毫秒，P95折算为6.16毫秒，平均单条吞吐收益为23.16倍。
 
 \begin{lstlisting}[language=bash]
 python scripts/benchmark_api_latency.py --api-url http://localhost:8000 --records 200 --batch-size 50
 \end{lstlisting}
 
-在线流式作业同样支持微批模式，默认\texttt{FRAUDSIM\_SCORING\_MODE=microbatch}、\texttt{FRAUDSIM\_BATCH\_SIZE=50}、\texttt{FRAUDSIM\_BATCH\_LINGER\_MS=300}。该配置在吞吐和实时性之间做折中：低流量时最多等待300毫秒，高流量时满50条立即批量评分。现场答辩可展示压测报告和Kafka输出时间戳，说明系统具备低延迟业务处理能力。
+在线流式作业默认批大小50、最长等待300毫秒，并使用flush marker主动刷新尾批。完整链路已验证Flink作业处于RUNNING状态、100条交易成功回放，\texttt{risk\_results}能够输出窗口、画像、图风险、决策和理由码。
+
+\subsection{阈值与图分析实验}
+
+阈值沙盒在\texttt{medium=0.50}、\texttt{high=0.80}时记录到放行112,249条、人工审核1,647条、高风险拦截9,753条，拦截精度96.08\%、欺诈召回87.69\%、误报率0.338\%。该实验说明阈值应结合误报成本和审核容量配置，而不能只以模型F1最大化为目标。
+
+可解释图挖掘记录到475个候选团伙；在0.65高置信阈值下，交易精度为98.71\%，注入团伙总体召回为77.93\%。GraphSAGE旁路实验采样30,000个节点和25,732条边，取得PR-AUC 0.6799、ROC-AUC 0.7855和F1@0.5为0.5881。结果证明图嵌入具有识别价值，但当前效果和时序验证尚不足以替代线上主模型，因此保持旁路。
 
 \subsection{自动化测试覆盖}
 
-项目包含面向核心模块的单元测试，覆盖API/Dashboard、窗口特征、流式微批、图挖掘解释和基础特征处理。测试文件位于\texttt{tests/}目录：
+项目包含面向核心模块的单元测试，除原有特征、窗口、微批、图挖掘和API测试外，新增可调仿真器、阈值沙盒、GraphSAGE数据构建和Kubernetes清单结构测试。
 
 \begin{itemize}
   \item \texttt{test\_features.py}：验证训练特征选择、缺失填充和类别处理；
@@ -73,6 +81,8 @@ python scripts/benchmark_api_latency.py --api-url http://localhost:8000 --record
   \item \texttt{test\_streaming\_microbatch.py}：验证微批评分缓冲与flush逻辑；
   \item \texttt{test\_graph\_mining\_explainability.py}：验证团伙挖掘和解释字段；
   \item \texttt{test\_api\_dashboard.py}：验证Dashboard资源、模型发现、指标和模型重载。
+  \item \texttt{test\_simulator.py}与\texttt{test\_threshold\_sandbox.py}：验证仿真配置和阈值指标计算；
+  \item \texttt{test\_graphsage\_experiment.py}与\texttt{test\_k8s\_manifests.py}：验证图采样、节点标签和边云资源清单。
 \end{itemize}
 
 测试运行命令为：
@@ -80,18 +90,3 @@ python scripts/benchmark_api_latency.py --api-url http://localhost:8000 --record
 \begin{lstlisting}[language=bash]
 python -m unittest discover -s tests
 \end{lstlisting}
-
-需要注意，部分测试依赖已生成的模型产物和数据目录；若新环境未准备\texttt{data/processed/fp\_fraudsim\_injected}和\texttt{models/lightgbm/latest}，应先执行数据准备与训练流程。
-
-\subsection{演示流程}
-
-答辩演示建议按以下顺序进行：
-
-\begin{enumerate}
-  \item 打开\texttt{http://localhost:8000/dashboard}，展示模型已加载、特征数和阈值；
-  \item 点击初始化画像，说明Redis中保存用户、商户、设备、IP和图画像；
-  \item 点击回放交易流，观察\texttt{risk\_results}和\texttt{alert\_events}实时更新；
-  \item 选择一条高风险交易，展示风险分数、等级、处置动作和理由码；
-  \item 打开图挖掘页，展示疑似团伙、共享设备/IP/商户证据和实体链路；
-  \item 提交人工反馈，并展示轻量重训和模型热切换接口，说明迭代闭环。
-\end{enumerate}

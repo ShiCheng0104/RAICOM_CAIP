@@ -9,30 +9,30 @@
 \contentsline {subsection}{\numberline {（一）}多源异构数据设计}{5}{subsection.2.1}%
 \contentsline {subsection}{\numberline {（二）}正常交易与欺诈场景仿真}{5}{subsection.2.2}%
 \contentsline {subsection}{\numberline {（三）}跨时段与跨渠道建模}{6}{subsection.2.3}%
-\contentsline {subsection}{\numberline {（四）}多维特征体系}{6}{subsection.2.4}%
+\contentsline {subsection}{\numberline {（四）}多维特征体系}{7}{subsection.2.4}%
 \contentsline {subsection}{\numberline {（五）}标签、阈值与风险等级}{7}{subsection.2.5}%
-\contentsline {section}{\numberline {三、}系统架构与关键技术}{7}{section.3}%
-\contentsline {subsection}{\numberline {（一）}整体架构}{7}{subsection.3.1}%
-\contentsline {subsection}{\numberline {（二）}框架选型的合理性与先进性}{8}{subsection.3.2}%
+\contentsline {section}{\numberline {三、}系统架构与关键技术}{8}{section.3}%
+\contentsline {subsection}{\numberline {（一）}整体架构}{8}{subsection.3.1}%
+\contentsline {subsection}{\numberline {（二）}框架选型的合理性与先进性}{9}{subsection.3.2}%
 \contentsline {subsection}{\numberline {（三）}流式处理链路}{9}{subsection.3.3}%
 \contentsline {subsection}{\numberline {（四）}算法组合的合理性与先进性}{10}{subsection.3.4}%
 \contentsline {subsection}{\numberline {（五）}模型训练与多模型管理}{11}{subsection.3.5}%
-\contentsline {subsection}{\numberline {（六）}风险解释与理由码}{11}{subsection.3.6}%
+\contentsline {subsection}{\numberline {（六）}风险解释与理由码}{12}{subsection.3.6}%
 \contentsline {subsection}{\numberline {（七）}图挖掘与团伙溯源}{12}{subsection.3.7}%
-\contentsline {subsection}{\numberline {（八）}可视化与演示交互}{12}{subsection.3.8}%
+\contentsline {subsection}{\numberline {（八）}可视化与演示交互}{13}{subsection.3.8}%
 \contentsline {section}{\numberline {四、}实验验证与复现方案}{13}{section.4}%
 \contentsline {subsection}{\numberline {（一）}实验目标}{13}{subsection.4.1}%
-\contentsline {subsection}{\numberline {（二）}离线模型评估流程}{13}{subsection.4.2}%
+\contentsline {subsection}{\numberline {（二）}离线模型评估流程}{14}{subsection.4.2}%
 \contentsline {subsection}{\numberline {（三）}实时检测链路复现}{14}{subsection.4.3}%
-\contentsline {subsection}{\numberline {（四）}性能测试方案}{14}{subsection.4.4}%
-\contentsline {subsection}{\numberline {（五）}自动化测试覆盖}{15}{subsection.4.5}%
-\contentsline {subsection}{\numberline {（六）}演示流程}{15}{subsection.4.6}%
-\contentsline {section}{\numberline {五、}创新性、实用性与安全设计}{16}{section.5}%
-\contentsline {subsection}{\numberline {（一）}主要创新点}{16}{subsection.5.1}%
-\contentsline {subsection}{\numberline {（二）}实用性与业务适配}{17}{subsection.5.2}%
-\contentsline {subsection}{\numberline {（三）}成熟度与可扩展性}{17}{subsection.5.3}%
-\contentsline {subsection}{\numberline {（四）}安全与合规设计}{18}{subsection.5.4}%
-\contentsline {subsection}{\numberline {（五）}局限性与后续工作}{18}{subsection.5.5}%
-\contentsline {section}{参考文献}{20}{section*.6}%
-\contentsline {section}{附录}{22}{section*.8}%
-\contentsline {section}{致谢}{24}{section*.14}%
+\contentsline {subsection}{\numberline {（四）}性能测试结果}{15}{subsection.4.4}%
+\contentsline {subsection}{\numberline {（五）}阈值与图分析实验}{15}{subsection.4.5}%
+\contentsline {subsection}{\numberline {（六）}自动化测试覆盖}{16}{subsection.4.6}%
+\contentsline {section}{\numberline {五、}创新性、实用性与安全设计}{17}{section.5}%
+\contentsline {subsection}{\numberline {（一）}主要创新点}{17}{subsection.5.1}%
+\contentsline {subsection}{\numberline {（二）}实用性与业务适配}{18}{subsection.5.2}%
+\contentsline {subsection}{\numberline {（三）}成熟度与可扩展性}{18}{subsection.5.3}%
+\contentsline {subsection}{\numberline {（四）}安全与合规设计}{19}{subsection.5.4}%
+\contentsline {subsection}{\numberline {（五）}局限性与后续工作}{19}{subsection.5.5}%
+\contentsline {section}{参考文献}{21}{section*.6}%
+\contentsline {section}{附录}{23}{section*.8}%
+\contentsline {section}{致谢}{26}{section*.14}%
