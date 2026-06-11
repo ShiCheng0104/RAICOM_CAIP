@@ -1,0 +1,97 @@
+\section{实验验证与复现方案}
+\label{sec:experiment}
+
+\subsection{实验目标}
+
+本作品的实验验证围绕赛题一评分要求展开，重点不是追求单一离线指标，而是证明系统具备端到端可运行能力。实验分为四类：离线模型效果评估、实时链路功能验证、API延迟压测和团伙挖掘可解释性验证。
+
+\begin{table}[H]
+  \centering
+  \caption{实验验证项目}
+  \label{tab:experiment_items}
+  \renewcommand\arraystretch{1.35}
+  \setlength{\tabcolsep}{5pt}
+  {\songti\zihao{5}
+  \begin{tabularx}{0.96\textwidth}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
+    \toprule
+    实验类别 & 验证目标 & 对应脚本或接口 \\
+    \midrule
+    离线训练评估 & 比较模型PR-AUC、ROC-AUC、F1、Top 1\%召回和误报率 & \texttt{python -m fraudsim.training.train} \\
+    实时链路验证 & 验证Kafka输入、Flink评分、告警输出和迟到事件输出 & \texttt{producer}、\texttt{flink\_job.py}、\texttt{/topics/\{topic\}/recent} \\
+    API延迟压测 & 比较单笔评分与批量评分的平均、P50、P95、P99延迟 & \texttt{scripts/benchmark\_api\_latency.py} \\
+    图挖掘验证 & 验证疑似团伙、共享资源证据、实体风险特征是否生成 & \texttt{python -m fraudsim.graph\_mining} \\
+    \bottomrule
+  \end{tabularx}
+  }
+\end{table}
+
+\subsection{离线模型评估流程}
+
+训练脚本使用训练集拟合模型、验证集校准阈值、测试集报告最终指标。输出指标包括PR-AUC、ROC-AUC、F1、Top 1\%召回率和高风险阈值下误报率。其中PR-AUC适合衡量欺诈样本稀少情况下的排序质量；Top 1\%召回率模拟风控团队有限审核资源下的重点拦截能力；误报率反映正常用户体验损失。
+
+推荐复现实验命令如下：
+
+\begin{lstlisting}[language=bash]
+python -m fraudsim.training.train --dataset fp_fraudsim_injected --model lightgbm
+python -m fraudsim.training.train --dataset fp_fraudsim_injected --model xgboost
+python -m fraudsim.training.train --dataset fp_fraudsim_injected --model catboost
+python -m fraudsim.training.train --dataset fp_fraudsim_injected --model sklearn_hgb
+\end{lstlisting}
+
+模型训练后，\texttt{models/leaderboard.json}会按PR-AUC排序，Dashboard的模型页会读取该排行榜。由于当前提交目录未包含大体积\texttt{data/}和\texttt{models/}产物，评审或答辩环境需要先按README完成数据准备和训练，再以生成的\texttt{metrics.json}作为最终实验数值。
+
+\subsection{实时检测链路复现}
+
+系统提供Docker Compose一键部署。推荐流程为先训练模型，再启动Kafka、Redis、Model API和Flink风险作业，随后创建主题、加载画像并回放交易流。
+
+\begin{lstlisting}[language=bash]
+docker compose -p fraudsim up -d --build kafka redis model-api flink-jobmanager flink-taskmanager flink-risk-job
+python -m fraudsim.streaming.topics --bootstrap-servers localhost:9094
+python -m fraudsim.streaming.load_profiles --dataset fp_fraudsim_injected --redis-url redis://localhost:6379/0
+python -m fraudsim.streaming.producer --dataset fp_fraudsim_injected --bootstrap-servers localhost:9094 --rate 100 --limit 1000
+\end{lstlisting}
+
+风险结果可通过Dashboard查看，也可通过API读取Kafka近期消息。实时输出字段包括\texttt{transaction\_id}、\texttt{risk\_score}、\texttt{risk\_level}、\texttt{decision}、\texttt{reason\_codes}、模型名称、模型版本和评分时间。该输出满足赛题要求的“风险评估、欺诈判定和风险等级输出”。
+
+\subsection{性能测试方案}
+
+API延迟压测脚本会先调用\texttt{/health}确认模型已加载，再生成固定结构的样例交易，分别测试单笔\texttt{/predict}和批量\texttt{/predict}。报告写入\texttt{models/api\_latency\_microbatch\_report.json}，字段包括平均延迟、P50、P95、P99、批量单条均摊延迟和批量加速比。
+
+\begin{lstlisting}[language=bash]
+python scripts/benchmark_api_latency.py --api-url http://localhost:8000 --records 200 --batch-size 50
+\end{lstlisting}
+
+在线流式作业同样支持微批模式，默认\texttt{FRAUDSIM\_SCORING\_MODE=microbatch}、\texttt{FRAUDSIM\_BATCH\_SIZE=50}、\texttt{FRAUDSIM\_BATCH\_LINGER\_MS=300}。该配置在吞吐和实时性之间做折中：低流量时最多等待300毫秒，高流量时满50条立即批量评分。现场答辩可展示压测报告和Kafka输出时间戳，说明系统具备低延迟业务处理能力。
+
+\subsection{自动化测试覆盖}
+
+项目包含面向核心模块的单元测试，覆盖API/Dashboard、窗口特征、流式微批、图挖掘解释和基础特征处理。测试文件位于\texttt{tests/}目录：
+
+\begin{itemize}
+  \item \texttt{test\_features.py}：验证训练特征选择、缺失填充和类别处理；
+  \item \texttt{test\_window\_features.py}：验证用户、设备、IP、商户窗口统计；
+  \item \texttt{test\_streaming\_microbatch.py}：验证微批评分缓冲与flush逻辑；
+  \item \texttt{test\_graph\_mining\_explainability.py}：验证团伙挖掘和解释字段；
+  \item \texttt{test\_api\_dashboard.py}：验证Dashboard资源、模型发现、指标和模型重载。
+\end{itemize}
+
+测试运行命令为：
+
+\begin{lstlisting}[language=bash]
+python -m unittest discover -s tests
+\end{lstlisting}
+
+需要注意，部分测试依赖已生成的模型产物和数据目录；若新环境未准备\texttt{data/processed/fp\_fraudsim\_injected}和\texttt{models/lightgbm/latest}，应先执行数据准备与训练流程。
+
+\subsection{演示流程}
+
+答辩演示建议按以下顺序进行：
+
+\begin{enumerate}
+  \item 打开\texttt{http://localhost:8000/dashboard}，展示模型已加载、特征数和阈值；
+  \item 点击初始化画像，说明Redis中保存用户、商户、设备、IP和图画像；
+  \item 点击回放交易流，观察\texttt{risk\_results}和\texttt{alert\_events}实时更新；
+  \item 选择一条高风险交易，展示风险分数、等级、处置动作和理由码；
+  \item 打开图挖掘页，展示疑似团伙、共享设备/IP/商户证据和实体链路；
+  \item 提交人工反馈，并展示轻量重训和模型热切换接口，说明迭代闭环。
+\end{enumerate}

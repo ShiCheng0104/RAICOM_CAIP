@@ -1,0 +1,179 @@
+ % !TEX program = xelatex
+% !TEX encoding = UTF-8 Unicode
+\documentclass[12pt,a4paper,zihao=-4,AutoFakeBold,AutoFakeSlant,fontset=fandol]{ctexart}
+\usepackage{iftex}
+\usepackage{xeCJK}
+\xeCJKsetup{CJKecglue={}}  % 关闭中英文自动间距
+\usepackage{amsmath,amsthm,amssymb,amsfonts,mathrsfs,mathtools}
+\usepackage{graphicx,caption,float}
+\usepackage{geometry,fancyhdr}
+\usepackage{enumerate}
+\usepackage{tablefootnote}
+\usepackage{tocloft}
+\usepackage[colorlinks,linkcolor=black,anchorcolor=black,citecolor=black]{hyperref}
+\usepackage[symbol]{footmisc}
+\usepackage{cleveref}
+\usepackage{fontspec}
+\usepackage{setspace}
+\usepackage{framed}
+\usepackage{mdframed}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage[boxed,ruled,lined,linesnumbered]{algorithm2e}
+\usepackage{algorithmic}
+\usepackage{listings,lstautogobble}
+\usepackage{appendix}
+\usepackage{unicode-math}
+\usepackage{multirow}
+
+% 当前环境缺少小标宋字体，使用系统宋体作为稳定替代，避免字体探测触发交互提示。
+\newcommand\xiaobiaosong{\songti}
+
+% 上标引用格式
+\makeatletter
+\def\@cite#1#2{\textsuperscript{[{#1\if@tempswa , #2\fi}]}}
+\makeatother
+
+% 统一排版参数
+\setstretch{2.0}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0pt}
+
+% 页面格式
+\geometry{left=3.17cm,right=3.17cm,top=2.54cm,bottom=2.54cm}
+\setlength{\headheight}{15pt}
+
+% 目录和正文的页眉与页脚
+\fancypagestyle{plain}
+ {\fancyhf{}
+  \fancyfoot[C]{\zihao{-5}\thepage}
+  \renewcommand\headrulewidth{0pt}
+  \renewcommand\footrulewidth{0pt}}
+\fancypagestyle{body}
+ {\fancyhf{}
+  \fancyfoot[C]{\zihao{-5}\thepage}
+  \fancyhead[C]{\zihao{-4}金融反诈智能守护赛题一作品技术文档}
+  \renewcommand\headrulewidth{0.6pt}
+  \renewcommand\footrulewidth{0pt}}
+
+% 设置图和表格全文连续编号
+\renewcommand{\thefigure}{\arabic{figure}}
+\renewcommand{\thetable}{\arabic{table}}
+
+% 图表题注分隔符：编号与题名之间空两格
+\DeclareCaptionLabelSeparator{twospaces}{\hspace{2em}}
+
+% 自定义 caption 字体：小四号宋体
+\DeclareCaptionFont{songtixiaosi}{\songti\zihao{-4}}
+
+\captionsetup[figure]{
+  font=songtixiaosi,
+  labelfont=songtixiaosi,
+  labelsep=twospaces,
+  justification=centering,
+  singlelinecheck=true,
+  name=图
+}
+
+\captionsetup[table]{
+  font=songtixiaosi,
+  labelfont=songtixiaosi,
+  labelsep=twospaces,
+  justification=centering,
+  singlelinecheck=true,
+  name=表
+}
+
+% 图表标题使用中文
+\AtBeginDocument{%
+  \renewcommand{\figurename}{图}
+  \renewcommand{\tablename}{表}
+  \renewcommand{\refname}{\centering\heiti\zihao{4}参考文献}
+  \renewcommand{\contentsname}{\centering\heiti\zihao{4}目\quad 录}
+  \renewcommand{\appendixname}{附录}
+}
+
+% 标题格式与编号层级
+\renewcommand\thesection{\chinese{section}、}
+\renewcommand\thesubsection{（\chinese{subsection}）}
+\renewcommand\thesubsubsection{\arabic{subsubsection}.}
+\ctexset{
+  section = {
+    format = \heiti\zihao{-3}\raggedright,
+    numberformat = {},
+    aftername = {},
+    beforeskip = 24pt,
+    afterskip = 12pt
+  },
+  subsection = {
+    format = \kaishu\zihao{4}\raggedright,
+    numberformat = {},
+    aftername = {},
+    beforeskip = 12pt,
+    afterskip = 6pt
+  },
+  subsubsection = {
+    format = \songti\zihao{-4}\bfseries\raggedright,
+    numberformat = {},
+    aftername = {},
+    beforeskip = 12pt,
+    afterskip = 6pt
+  }
+}
+
+% Configure cleveref to use Chinese names
+\crefname{figure}{图}{图}
+\crefname{table}{表}{表}
+\crefname{section}{第}{节}
+\crefname{appendix}{附录}{附录}
+
+\begin{document}
+
+\pagestyle{empty}
+
+\input{cover/cover_cyber}
+
+\clearpage
+\pagenumbering{Roman}
+\setcounter{page}{1}
+\pagestyle{plain}
+\begin{sloppypar}
+  \input{abstractC/abstractC}
+\end{sloppypar}
+
+\newpage
+\begingroup
+\setcounter{tocdepth}{3}
+\setstretch{1.35}
+\setlength{\cftbeforesecskip}{2pt}
+\setlength{\cftbeforesubsecskip}{0.5pt}
+\setlength{\cftsubsubsecnumwidth}{1.5em}
+\tableofcontents
+\endgroup
+
+\clearpage
+\setcounter{page}{1}
+\pagenumbering{arabic}
+\pagestyle{body}
+
+\vspace{0.5\baselineskip}
+
+\input{body/1_introduction.tex}
+\input{body/2_background.tex}
+\input{body/3_system.tex}
+\input{body/4_experiment.tex}
+\input{body/5_innovation.tex}
+
+\clearpage
+\input{ref.tex}
+
+\clearpage
+\input{appendix.tex}
+
+\clearpage
+\input{thanks.tex}
+
+
+\end{document}

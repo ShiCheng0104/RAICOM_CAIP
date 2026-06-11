@@ -1,0 +1,14 @@
+\section*{\centering\bfseries\zihao{4}ABSTRACT}
+\addcontentsline{toc}{section}{Abstract}
+
+\vspace{0.5cm}
+
+This technical report presents FP-FraudSim, a streaming fraud transaction detection system for Task 1 of the Financial Anti-Fraud Intelligent Guardian challenge. The system targets third-party payment risk control scenarios and builds an end-to-end workflow covering simulated transaction generation, fraud pattern injection, real-time scoring, risk-level decisioning, fraud-ring tracing, dashboard visualization, and human feedback based model iteration.
+
+The system adopts a Kafka + Flink + Redis + FastAPI + Dashboard architecture. Offline modules normalize transaction data, inject seven fraud scenarios including account takeover, phishing transfer, money laundering, mule account activity, bonus abuse, merchant cash-out, and device-group fraud, and train multiple model adapters such as LightGBM, XGBoost, CatBoost, and sklearn models. Online modules consume transaction events from Kafka, compute short-window behavioral features in Flink, enrich records with Redis profiles and graph-risk features, call the model API for batch prediction, and write scored results, high-risk alerts, and late events back to Kafka topics.
+
+The implementation is aligned with the official scoring criteria. It provides a reproducible multi-source simulation environment, a real-time Kafka/Flink processing chain, multi-dimensional features spanning users, devices, IPs, merchants, windows, and graphs, a feedback-and-retraining loop, and an explainable graph mining module for fraud-ring evidence. Docker Compose, one-click scripts, API latency benchmarking, unit tests, and a dashboard are included for reproduction and presentation.
+
+FP-FraudSim is therefore not a standalone offline classifier, but a deployable anti-fraud prototype with transaction simulation, real-time detection, dynamic anomaly assessment, explainable tracing, and continuous iteration capabilities.
+
+\noindent\textbf{Key Words: }financial anti-fraud; transaction fraud detection; Kafka; Flink; graph mining; model iteration
