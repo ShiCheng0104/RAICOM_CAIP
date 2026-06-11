@@ -1349,11 +1349,13 @@ async function refreshUserProfiles() {
   if (!list) return;
   list.textContent = "正在加载用户画像";
   const query = document.getElementById("profileSearchInput")?.value.trim() || "";
+  const sort = document.getElementById("profileSortSelect")?.value || "diverse";
   try {
-    const result = await api(`/profiles/users?limit=80&offset=${state.profileOffset}&query=${encodeURIComponent(query)}&sort=risk_history_score&direction=desc`);
+    const result = await api(`/profiles/users?limit=80&offset=${state.profileOffset}&query=${encodeURIComponent(query)}&sort=${encodeURIComponent(sort)}&direction=desc`);
     state.profileUsers = result.users || [];
     state.profileMatched = result.matched || 0;
-    setText("profileListCount", `匹配 ${fmt(result.matched, 0)} / ${fmt(result.total, 0)} 位用户`);
+    const richness = result.sort === "diverse" ? ` · ${result.page_sources} 个来源 · ${result.page_profile_patterns} 类画像` : "";
+    setText("profileListCount", `匹配 ${fmt(result.matched, 0)} / ${fmt(result.total, 0)} 位用户${richness}`);
     setText("profilePageState", `第 ${Math.floor(state.profileOffset / 80) + 1} 页 / 共 ${Math.max(1, Math.ceil(state.profileMatched / 80))} 页`);
     const prev = document.getElementById("profilePrevBtn");
     const next = document.getElementById("profileNextBtn");
@@ -1370,7 +1372,7 @@ async function refreshUserProfiles() {
       row.type = "button";
       row.dataset.userId = user.user_id;
       row.innerHTML = `
-        <span><strong>${escapeHtml(user.user_id)}</strong><small>${escapeHtml(user.home_country || "--")} · ${fmt(asNumber(user.txn_count), 0)} 笔交易</small></span>
+        <span><strong>${escapeHtml(user.user_id)}</strong><small>${escapeHtml(user.source_hint || "unknown")} · ${escapeHtml(user.home_country || "--")} · ${fmt(asNumber(user.txn_count), 0)} 笔交易</small></span>
         <span class="profile-list-risk">${fmt(asNumber(user.risk_history_score), 2)}<small>历史风险</small></span>
       `;
       row.addEventListener("click", () => selectUserProfile(user.user_id));
@@ -1719,6 +1721,11 @@ bind("profileSearchInput", "keydown", (event) => {
     state.profileOffset = 0;
     refreshUserProfiles();
   }
+});
+bind("profileSortSelect", "change", () => {
+  state.profileOffset = 0;
+  state.selectedUserProfile = null;
+  refreshUserProfiles();
 });
 bind("profilePrevBtn", "click", () => {
   state.profileOffset = Math.max(0, state.profileOffset - 80);

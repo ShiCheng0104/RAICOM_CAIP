@@ -1271,7 +1271,7 @@ textarea {
 
 .profile-search {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, auto) auto;
   gap: 8px;
   padding: 14px;
   border-bottom: 1px solid var(--border);
@@ -1851,6 +1851,10 @@ textarea {
   .profile-user-list {
     height: 420px;
     min-height: 0;
+  }
+
+  .profile-search {
+    grid-template-columns: 1fr;
   }
 
   .profile-detail-panel .profile-detail {

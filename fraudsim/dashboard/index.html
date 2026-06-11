@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FP-FraudSim Risk Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260611_welcome_v1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260611_profiles_v2" />
   </head>
   <body>
     <section id="welcomeScreen" class="welcome-screen" aria-labelledby="welcomeTitle">
@@ -269,12 +269,21 @@
               <div class="panel-head">
                 <div>
                   <h3>用户目录</h3>
-                  <span id="profileListCount" class="panel-subtitle">按历史风险排序</span>
+                  <span id="profileListCount" class="panel-subtitle">按画像多样性排序</span>
                 </div>
                 <button id="profileRefreshBtn" class="secondary-btn compact" type="button">刷新</button>
               </div>
               <div class="profile-search">
                 <input id="profileSearchInput" type="search" placeholder="搜索用户 ID" />
+                <select id="profileSortSelect" aria-label="用户画像排序">
+                  <option value="diverse">综合多样性</option>
+                  <option value="risk_history_score">历史风险</option>
+                  <option value="txn_count">交易活跃度</option>
+                  <option value="total_amount">累计金额</option>
+                  <option value="observed_fraud_rate">历史欺诈率</option>
+                  <option value="common_device_count">关联设备数</option>
+                  <option value="common_ip_count">关联 IP 数</option>
+                </select>
                 <button id="profileSearchBtn" class="primary-btn" type="button">搜索</button>
               </div>
               <div id="profileUserRows" class="profile-user-list">正在加载用户画像</div>
@@ -453,6 +462,6 @@
       <button id="profileDrawerOpenPageBtn" class="primary-btn drawer-page-btn" type="button">在用户画像页查看</button>
     </aside>
 
-    <script src="/static/app.js?v=20260611_profiles_v1"></script>
+    <script src="/static/app.js?v=20260611_profiles_v2"></script>
   </body>
 </html>
