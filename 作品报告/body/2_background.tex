@@ -3,13 +3,69 @@
 
 \subsection{多源异构数据设计}
 
-赛题一要求参赛团队自建或模拟包含多源异构金融交易数据的仿真环境。FP-FraudSim以统一交易日志为核心表，并围绕交易主体构建用户画像、设备画像、IP地理画像、商户画像、图节点和图边等辅助表。核心字段覆盖交易ID、时间戳、金额、交易类型、支付渠道、支付方式、付款方、收款方、商户、设备、IP、币种、国家地区、风险标签和欺诈类型，能够表达第三方支付、转账、商户收单等典型业务场景。
+赛题一要求参赛团队自建或模拟包含多源异构金融交易数据的仿真环境。受金融隐私、机构安全和标签成本限制，单一公开数据集通常只能覆盖交易、身份、设备或图关系中的一部分。因此，FP-FraudSim没有简单纵向拼接原始文件，而是对八个公开或合成数据源进行``角色化融合''：交易型数据进入统一交易事实表，身份与设备字段进入特征侧表，网络型数据进入异构图，仿真器与反洗钱数据用于补充复杂欺诈模式。PaySim与BankSim提供支付仿真和消费网络\cite{paysim,banksim}，IEEE-CIS与Credit Card Fraud提供高维表格特征和类别不平衡对照\cite{ieeecis,creditcard}，Elliptic与DGraph-Fin提供资金流和金融关系图\cite{elliptic,dgraphfin}，SAML-D与AMLSim提供反洗钱交易及模式生成参考\cite{samld,amlsim}。
 
-系统将静态画像和动态事件分离。静态画像记录账户年龄、历史交易量、平均金额、常用设备数、常用IP数、商户投诉率、设备绑定用户数、IP代理/VPN标记等信息；动态事件记录交易时间、金额、渠道、设备、IP、商户和收款方。在线识别时，Flink从Kafka读取动态事件，再从Redis按实体ID补齐画像，使模型输入既包含单笔交易上下文，也包含历史行为基线。
+\begin{table}[H]
+  \centering
+  \caption{八个公开数据源的角色化融合方式}
+  \label{tab:dataset_roles}
+  \renewcommand\arraystretch{1.25}
+  \setlength{\tabcolsep}{4pt}
+  {\songti\zihao{5}
+  \begin{tabularx}{0.98\textwidth}{>{\raggedright\arraybackslash}p{2.1cm}>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.1cm}}
+    \toprule
+    数据源 & 数据属性 & 在FP-FraudSim中的作用 & 主要产物 \\
+    \midrule
+    PaySim & 移动支付、转账、提现与余额变化 & 构成移动支付交易骨架，保留余额变化侧表 & 交易主表、PaySim特征侧表 \\
+    BankSim & 消费交易、用户属性、商户类别与网络 & 补充用户/商户画像和用户--商户关系 & 交易主表、画像、图边 \\
+    IEEE-CIS & 电商支付、匿名身份、卡、地址和设备字段 & 提供电商场景及高维匿名特征 & 交易主表、IEEE特征侧表 \\
+    Credit Card Fraud & 极度不平衡的匿名信用卡交易 & 用于类别不平衡和异常检测对照 & 交易主表、PCA特征侧表 \\
+    Elliptic Bitcoin & 带时间步和非法标签的资金流图 & 验证资金链路溯源与图模型 & 图节点、资金流图边 \\
+    DGraph-Fin & 大规模金融用户动态图与17维节点特征 & 验证关系风险传播和动态图异常检测 & 图节点、关系边、节点特征侧表 \\
+    SAML-D & 大规模跨境反洗钱交易与洗钱子类型 & 补充AML模式并支持流式压测 & 交易主表 \\
+    IBM AMLSim & 反洗钱仿真器及样例输出 & 提供环路、扇入扇出和跑分账户模式参考 & 样例交易、转账图边 \\
+    \bottomrule
+  \end{tabularx}
+  }
+\end{table}
+
+FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段覆盖交易ID、来源、时间戳、金额、交易类型、渠道、支付方式、付款方、收款方、商户、设备、IP、币种、国家地区、标签和欺诈类型；围绕交易主体构建用户、商户、设备和IP画像，并以\texttt{graph\_nodes.parquet}和\texttt{graph\_edges.parquet}描述用户--交易--收款方、共享设备/IP、商户支付、资金流和用户关系。对于IEEE-CIS的匿名高维字段、Credit Card Fraud的V1--V28、PaySim余额字段和DGraph-Fin节点向量，系统通过\texttt{feature\_store\_index.parquet}记录关联键，避免核心表过宽并保留来源专属信息。
+
+系统进一步将静态画像和动态事件分离。静态画像记录账户年龄、历史交易量、平均金额、常用设备数、常用IP数、商户投诉率、设备绑定用户数、IP代理/VPN标记等信息；动态事件记录交易时间、金额、渠道、设备、IP、商户和收款方。在线识别时，Flink从Kafka读取动态事件，再从Redis按实体ID补齐画像，使模型输入既包含单笔交易上下文，也包含历史行为基线。
+
+\subsection{统一数据集构建方法}
+
+数据构建由\path{scripts/scripts/etl}下的四阶段脚本完成。首先，\path{01_normalize.py}读取CSV与NPZ文件，将不同来源映射到统一最小交易语义，并将高维或源专属字段写入特征侧表。其次，\path{02_build_unified_dataset.py}对大数据源进行固定随机种子的确定性抽样，使用来源前缀构造全局唯一ID，将各源时间缩放到2026年1月1日至3月31日，补充渠道、支付方式、设备和IP，并生成画像、异构图、时间切分和流式JSONL。再次，\path{04_inject_fraud_patterns.py}在不覆盖基础集的前提下生成七类欺诈增强样本及证据图边。最后，\path{03_validate_unified_dataset.py}检查主键、标签、时间切分、画像覆盖、图端点和流式文件可解析性。
+
+不同来源的实体ID均包含数据源和实体类型前缀，例如PaySim用户、BankSim商户、Elliptic交易节点与DGraph-Fin用户使用不同命名空间。该规则既避免跨源主键冲突，也保留来源可追溯性。标签统一为\texttt{is\_fraud=1/0/-1}，分别表示欺诈、正常和未知；未知标签单独进入\texttt{unlabeled}，不参与监督训练。标签来源和可信度由\texttt{label\_quality}记录，便于区分公开标注、注入样本和无标签样本。
+
+\begin{table}[H]
+  \centering
+  \caption{FP-FraudSim增强数据集的实际组成}
+  \label{tab:dataset_composition}
+  \renewcommand\arraystretch{1.25}
+  \setlength{\tabcolsep}{5pt}
+  {\songti\zihao{5}
+  \begin{tabularx}{0.94\textwidth}{>{\raggedright\arraybackslash}X>{\raggedleft\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{5.1cm}}
+    \toprule
+    数据产物或属性 & 数量 & 说明 \\
+    \midrule
+    统一交易主表 & 830,733笔 & 含810,133笔基础融合交易和20,600笔七类注入交易 \\
+    欺诈/正常/无标签交易 & 67,066 / 747,667 / 16,000笔 & 有标签部分欺诈率为8.23\% \\
+    用户/商户画像 & 639,656 / 65,179条 & 从交易实体与聚合统计构建 \\
+    设备/IP画像 & 269,211 / 182,571条 & 支撑共享环境和异常终端识别 \\
+    图节点/图边 & 2,765,530 / 1,966,057条 & 融合交易派生边、公开图源与注入证据边 \\
+    训练/验证/测试/无标签集 & 566,795 / 124,289 / 123,649 / 16,000笔 & 有标签样本严格按事件时间切分 \\
+    \bottomrule
+  \end{tabularx}
+  }
+\end{table}
+
+上述规模记录在增强数据集清单中，属于可在比赛环境中复现的MVP确定性采样版本，而非八个来源的全量简单汇总。构建脚本同时支持\texttt{full}模式及按来源配置容量上限，便于在有限资源下开展功能验证，或在更高配置环境中扩大交易量和图边规模。
 
 \subsection{正常交易与欺诈场景仿真}
 
-项目通过\code{scripts/scripts/etl/04\_inject\_fraud\_patterns.py}在基础交易数据上注入更贴近反诈场景的欺诈样本。该脚本保持原始统一数据集不变，输出增强后的\code{fp\_fraudsim\_injected}目录，并按训练集、验证集和测试集时间边界自动拆分新增样本。当前实现覆盖七类欺诈模式：
+项目通过\code{scripts/scripts/etl/04\_inject\_fraud\_patterns.py}在基础交易数据上注入更贴近反诈场景的欺诈样本。该脚本保持原始统一数据集不变，输出增强后的\code{fp\_fraudsim\_injected}目录，并按基础集的训练、验证和测试时间边界自动归入新增样本。当前实现覆盖七类欺诈模式：
 
 \begin{enumerate}
   \item \textbf{账户接管：}攻击者在异常设备或异常IP登录后发起高额交易，金额显著偏离用户历史均值；
@@ -30,7 +86,7 @@
   \label{fig:operation_scenarios}
 \end{figure}
 
-注入脚本同步写入\code{fraud\_group\_id}、\code{injection\_scenario}、\code{scenario\_step}和\code{injection\_evidence}等字段，并扩展图边，便于后续进行监督训练、团伙挖掘和证据展示。
+注入样本使用\code{fraud\_group\_id}关联团伙，使用\code{injection\_scenario}记录场景，使用\code{scenario\_step}记录步骤，并通过\code{injection\_evidence}保存生成证据。脚本同时扩展图边，便于后续监督训练、团伙挖掘和证据展示。当前固定增强配置实际生成账户接管3,000笔、钓鱼转账3,000笔、洗钱拆分2,400笔、卡农账户2,800笔、优惠滥用3,200笔、商户套现3,000笔和设备团伙欺诈3,200笔，共20,600笔注入交易。
 
 为支持答辩现场和压力测试，项目新增\code{fraudsim/simulator/generate.py}可调参数仿真器。该模块可配置总交易数、欺诈比例、团伙数量与规模、共享设备/IP强度、跨境比例、大额比例、夜间比例、生成速率和随机种子；输出交易流、独立标签文件和完整仿真配置。与固定场景注入脚本相比，可调仿真器能够在不修改代码的情况下生成不同难度、不同负载和不同团伙结构的测试流。
 
@@ -57,7 +113,15 @@
 
 \subsection{跨时段与跨渠道建模}
 
-系统使用\code{timestamp}作为事件时间，训练侧保留按时间切分的\code{train/valid/test.parquet}，在线侧通过Producer按指定速率回放\code{transaction\_stream.jsonl}。交易渠道字段覆盖App、网页、小程序等入口，支付方式字段覆盖银行卡、转账等方式，时间特征包含小时、星期、是否周末、是否夜间等变量。Flink作业设置60秒watermark判断迟到事件，并将迟到交易输出到\code{late\_events}主题，体现真实流式场景下乱序和延迟数据处理能力。
+系统使用\code{timestamp}作为事件时间，将小时步、天步、秒偏移、真实日期和图时间步统一映射到共同时间轴。有标签交易按时间排序后以70\%/15\%/15\%划分训练、验证和测试集，未知标签单独保存；这种划分模拟``用过去预测未来''，避免随机切分造成未来分布和同一行为链路泄露。增强集的训练集最晚时间为2026年2月18日03:41:14，验证集最晚时间为2026年3月11日09:15:04，测试集从该边界后继续，划分顺序已由校验脚本核验。
+
+在线侧通过Producer按指定速率回放\code{transaction\_stream.jsonl}。交易渠道字段覆盖App、网页、小程序、POS、二维码、API和网点等入口，支付方式覆盖钱包、银行卡、现金、转账和余额支付，时间特征包含小时、星期、是否周末、是否夜间等变量。Flink作业设置60秒watermark判断迟到事件，并将迟到交易输出到\code{late\_events}主题，体现真实流式场景下乱序和延迟数据处理能力。
+
+\subsection{数据质量与泄露控制}
+
+项目使用\code{manifest.json}记录数据版本、随机种子、各来源行数、时间范围和产物路径，使用\code{validation\_report.json}保存自动校验结果。增强集校验结果为通过：830,733个交易ID全部唯一，时间戳无空值，金额无负数，标签仅包含$-1/0/1$；交易中的付款方、商户、设备和IP均可关联到对应画像；2,765,530个图节点ID全部唯一，1,966,057条图边不存在缺失端点；随机抽查10,000条流式事件均可解析为JSON。
+
+为降低数据泄露风险，模型训练仅使用当时可获得的交易、画像、窗口和图统计信息。\code{fraud\_type}、\code{label\_quality}、\code{rule\_score}、切分标记、注入证据，以及由全量标签直接聚合得到的欺诈率和黑名单字段不会作为主模型输入；离线窗口特征按事件时间只利用当前交易之前的历史记录，并与在线Flink窗口保持同名同义。该约束使离线指标更接近真实上线条件。
 
 \subsection{多维特征体系}
 
