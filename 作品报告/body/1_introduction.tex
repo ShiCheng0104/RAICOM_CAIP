@@ -16,6 +16,15 @@
   \item \textbf{工程落地：}提供可部署架构、性能测试方案、监控看板、测试用例和安全合规设计。
 \end{enumerate}
 
+图~\ref{fig:operation_scenarios}直观展示了赛题一需要解决的核心业务问题。正常支付通常由单一用户使用熟悉设备完成，而团伙欺诈会表现为多账户共享设备或IP、集中向同一收款方转账等协同行为。系统需要在交易发生时识别这些跨实体异常，并将风险转化为可执行的放行、复核或拦截决策。
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{pic/financial_fraud_scenario.png}
+  \caption{赛题一正常支付与团伙欺诈业务场景对比}
+  \label{fig:operation_scenarios}
+\end{figure}
+
 \subsection{作品定位}
 
 本作品命名为FP-FraudSim流式风控系统，定位为面向第三方支付和互联网金融交易的实时欺诈识别原型。系统以“仿真交易流 + 流式风险计算 + 模型服务 + 图谱溯源 + 人工反馈”为主线，覆盖赛题一完成度评分中的四个明确子项：仿真环境与实时检测能力、流式数据处理框架、自适应学习与模型迭代能力、多维度特征构建。

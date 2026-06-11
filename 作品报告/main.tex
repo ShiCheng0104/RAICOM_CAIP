@@ -21,6 +21,7 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{xcolor}
+\usepackage{colortbl}
 \usepackage[boxed,ruled,lined,linesnumbered]{algorithm2e}
 \usepackage{algorithmic}
 \usepackage{listings,lstautogobble}
@@ -48,6 +49,9 @@
 \definecolor{flowgreen}{HTML}{4F8B45}
 \definecolor{floworange}{HTML}{C98520}
 \definecolor{flowred}{HTML}{C64A4A}
+\definecolor{tablehead}{HTML}{176B73}
+\definecolor{tablealt}{HTML}{EEF7F7}
+\definecolor{tableline}{HTML}{9CC8CB}
 \tikzset{
   flowcard/.style={
     rectangle split,
@@ -196,9 +200,15 @@
 \newpage
 \begingroup
 \setcounter{tocdepth}{3}
-\setstretch{1.35}
-\setlength{\cftbeforesecskip}{2pt}
-\setlength{\cftbeforesubsecskip}{0.5pt}
+\zihao{5}
+\setstretch{0.92}
+\setlength{\cftbeforesecskip}{0.8pt}
+\setlength{\cftbeforesubsecskip}{0pt}
+\setlength{\cftbeforesubsubsecskip}{0pt}
+\renewcommand{\cftsecfont}{\heiti\zihao{5}}
+\renewcommand{\cftsecpagefont}{\heiti\zihao{5}}
+\renewcommand{\cftsubsecfont}{\songti\zihao{5}}
+\renewcommand{\cftsubsecpagefont}{\songti\zihao{5}}
 \setlength{\cftsubsubsecnumwidth}{1.5em}
 \tableofcontents
 \endgroup

@@ -9,13 +9,15 @@
   \centering
   \caption{八个公开数据源的角色化融合方式}
   \label{tab:dataset_roles}
-  \renewcommand\arraystretch{1.25}
-  \setlength{\tabcolsep}{4pt}
+  \renewcommand\arraystretch{1.38}
+  \setlength{\tabcolsep}{4.5pt}
   {\songti\zihao{5}
+  \arrayrulecolor{tableline}
+  \rowcolors{2}{tablealt}{white}
   \begin{tabularx}{0.98\textwidth}{>{\raggedright\arraybackslash}p{2.1cm}>{\raggedright\arraybackslash}p{3.1cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.1cm}}
-    \toprule
-    数据源 & 数据属性 & 在FP-FraudSim中的作用 & 主要产物 \\
-    \midrule
+    \rowcolor{tablehead}
+    \color{white}\bfseries 数据源 & \color{white}\bfseries 数据属性 & \color{white}\bfseries 在FP-FraudSim中的作用 & \color{white}\bfseries 主要产物 \\
+    \specialrule{0.8pt}{0pt}{0pt}
     PaySim & 移动支付、转账、提现与余额变化 & 构成移动支付交易骨架，保留余额变化侧表 & 交易主表、PaySim特征侧表 \\
     BankSim & 消费交易、用户属性、商户类别与网络 & 补充用户/商户画像和用户--商户关系 & 交易主表、画像、图边 \\
     IEEE-CIS & 电商支付、匿名身份、卡、地址和设备字段 & 提供电商场景及高维匿名特征 & 交易主表、IEEE特征侧表 \\
@@ -24,7 +26,7 @@
     DGraph-Fin & 大规模金融用户动态图与17维节点特征 & 验证关系风险传播和动态图异常检测 & 图节点、关系边、节点特征侧表 \\
     SAML-D & 大规模跨境反洗钱交易与洗钱子类型 & 补充AML模式并支持流式压测 & 交易主表 \\
     IBM AMLSim & 反洗钱仿真器及样例输出 & 提供环路、扇入扇出和跑分账户模式参考 & 样例交易、转账图边 \\
-    \bottomrule
+    \specialrule{0.8pt}{0pt}{0pt}
   \end{tabularx}
   }
 \end{table}
@@ -43,20 +45,22 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   \centering
   \caption{FP-FraudSim增强数据集的实际组成}
   \label{tab:dataset_composition}
-  \renewcommand\arraystretch{1.25}
+  \renewcommand\arraystretch{1.4}
   \setlength{\tabcolsep}{5pt}
   {\songti\zihao{5}
+  \arrayrulecolor{tableline}
+  \rowcolors{2}{tablealt}{white}
   \begin{tabularx}{0.94\textwidth}{>{\raggedright\arraybackslash}X>{\raggedleft\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{5.1cm}}
-    \toprule
-    数据产物或属性 & 数量 & 说明 \\
-    \midrule
+    \rowcolor{tablehead}
+    \color{white}\bfseries 数据产物或属性 & \color{white}\bfseries 数量 & \color{white}\bfseries 说明 \\
+    \specialrule{0.8pt}{0pt}{0pt}
     统一交易主表 & 830,733笔 & 含810,133笔基础融合交易和20,600笔七类注入交易 \\
     欺诈/正常/无标签交易 & 67,066 / 747,667 / 16,000笔 & 有标签部分欺诈率为8.23\% \\
     用户/商户画像 & 639,656 / 65,179条 & 从交易实体与聚合统计构建 \\
     设备/IP画像 & 269,211 / 182,571条 & 支撑共享环境和异常终端识别 \\
     图节点/图边 & 2,765,530 / 1,966,057条 & 融合交易派生边、公开图源与注入证据边 \\
     训练/验证/测试/无标签集 & 566,795 / 124,289 / 123,649 / 16,000笔 & 有标签样本严格按事件时间切分 \\
-    \bottomrule
+    \specialrule{0.8pt}{0pt}{0pt}
   \end{tabularx}
   }
 \end{table}
@@ -77,14 +81,7 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   \item \textbf{设备团伙欺诈：}多个账户共享设备、IP或代理环境，构成可由图关系识别的团伙结构。
 \end{enumerate}
 
-图~\ref{fig:operation_scenarios}从业务场景说明正常交易与团伙欺诈的可观测差异。正常用户通常使用熟悉设备完成单次支付；团伙欺诈则表现为多个账户共享设备或IP，并集中向同一收款方转账。系统不会凭单一现象直接判定诈骗，而是将金额偏离、短时频次、设备/IP共享、商户风险和团伙关系等线索转换为多维特征，再交由模型与阈值策略综合判断。
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{pic/financial_fraud_scenario.png}
-  \caption{正常支付与团伙欺诈的可观测行为差异}
-  \label{fig:operation_scenarios}
-\end{figure}
+图~\ref{fig:operation_scenarios}所示业务差异在仿真数据中被转换为金额偏离、短时频次、设备/IP共享、商户风险和团伙关系等可计算信号。系统不会凭单一现象直接判定诈骗，而是将多维线索交由模型与阈值策略综合判断。
 
 注入样本使用\code{fraud\_group\_id}关联团伙，使用\code{injection\_scenario}记录场景，使用\code{scenario\_step}记录步骤，并通过\code{injection\_evidence}保存生成证据。脚本同时扩展图边，便于后续监督训练、团伙挖掘和证据展示。当前固定增强配置实际生成账户接管3,000笔、钓鱼转账3,000笔、洗钱拆分2,400笔、卡农账户2,800笔、优惠滥用3,200笔、商户套现3,000笔和设备团伙欺诈3,200笔，共20,600笔注入交易。
 
@@ -131,13 +128,15 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   \centering
   \caption{主要特征组及反诈含义}
   \label{tab:feature_groups}
-  \renewcommand\arraystretch{1.35}
+  \renewcommand\arraystretch{1.42}
   \setlength{\tabcolsep}{5pt}
   {\songti\zihao{5}
+  \arrayrulecolor{tableline}
+  \rowcolors{2}{tablealt}{white}
   \begin{tabularx}{0.96\textwidth}{>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X}
-    \toprule
-    特征组 & 代表字段或计算方式 & 识别作用 \\
-    \midrule
+    \rowcolor{tablehead}
+    \color{white}\bfseries 特征组 & \color{white}\bfseries 代表字段或计算方式 & \color{white}\bfseries 识别作用 \\
+    \specialrule{0.8pt}{0pt}{0pt}
     交易基础特征 & 金额、币种、交易类型、渠道、支付方式、时间段 & 捕捉异常金额、夜间交易、非常用渠道等单笔风险 \\
     用户画像特征 & 历史交易量、平均金额、账户年龄、常用设备/IP数量 & 判断当前交易是否偏离用户长期行为基线 \\
     设备指纹特征 & 设备绑定用户数、设备类型、模拟器、代理设备标记 & 发现多账户共用设备、自动化设备和异常终端 \\
@@ -145,7 +144,7 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
     商户画像特征 & 商户类别、交易量、客诉率、拒付率、风险分 & 发现高风险商户、套现商户和集中收单异常 \\
     窗口特征 & 用户5分钟笔数/金额、1小时收款方数、设备/IP 10分钟唯一用户数 & 支撑实时异常检测和短时爆发识别 \\
     图关联特征 & 实体度数、欺诈邻居数、欺诈边比例、团伙风险分 & 识别团伙结构、共享资源和欺诈链路 \\
-    \bottomrule
+    \specialrule{0.8pt}{0pt}{0pt}
   \end{tabularx}
   }
 \end{table}

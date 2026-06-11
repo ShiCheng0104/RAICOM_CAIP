@@ -42,6 +42,13 @@ python -m fraudsim.training.train --dataset fp_fraudsim_injected --model sklearn
 
 已记录的LightGBM主模型实验使用67个特征，在123,649条测试交易上取得PR-AUC 0.9727、ROC-AUC 0.9949、F1 0.9169，高风险阈值下误报率为0.338\%。模型训练后，\code{models/leaderboard.json}按PR-AUC排序。当前代码仓库未包含大体积数据和模型产物，复现时需按README完成数据准备与训练，并以重新生成的\code{metrics.json}核验结果。
 
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.68\textwidth]{pic/dashboard_model_metrics.jpeg}
+  \caption{多模型指标对比、排行榜与阈值评估界面}
+  \label{fig:dashboard_model_metrics}
+\end{figure}
+
 \subsection{实时检测链路复现}
 
 系统提供Docker Compose一键部署。推荐流程为先训练模型，再启动Kafka、Redis、Model API和Flink风险作业，随后创建主题、加载画像并回放交易流。
@@ -68,6 +75,13 @@ python scripts/benchmark_api_latency.py --api-url http://localhost:8000 --record
 \subsection{阈值与图分析实验}
 
 阈值沙盒在\code{medium=0.50}、\code{high=0.80}时记录到放行112,249条、人工审核1,647条、高风险拦截9,753条，拦截精度96.08\%、欺诈召回87.69\%、误报率0.338\%。该实验说明阈值应结合误报成本和审核容量配置，而不能只以模型F1最大化为目标。
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.96\textwidth]{pic/dashboard_threshold.png}
+  \caption{阈值沙盒中的拦截效果与人工审核量评估}
+  \label{fig:dashboard_threshold}
+\end{figure}
 
 可解释图挖掘记录到475个候选团伙；在0.65高置信阈值下，交易精度为98.71\%，注入团伙总体召回为77.93\%。GraphSAGE旁路实验采样30,000个节点和25,732条边，取得PR-AUC 0.6799、ROC-AUC 0.7855和F1@0.5为0.5881。结果证明图嵌入具有识别价值，但当前效果和时序验证尚不足以替代线上主模型，因此保持旁路。
 
