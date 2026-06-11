@@ -11,6 +11,7 @@ topics:
   risk_results_batch: risk_results_batch
   alert_events: alert_events
   feedback_events: feedback_events
+  audit_events: audit_events
   late_events: late_events
 
 redis:

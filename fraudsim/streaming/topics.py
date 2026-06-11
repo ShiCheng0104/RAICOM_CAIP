@@ -41,6 +41,7 @@ def main() -> None:
         config["topics"].get("risk_results_batch", "risk_results_batch"),
         config["topics"]["alert_events"],
         config["topics"].get("feedback_events", "feedback_events"),
+        config["topics"].get("audit_events", "audit_events"),
         config["topics"].get("late_events", "late_events"),
     ]
     ensure_topics(bootstrap, topics, args.partitions)

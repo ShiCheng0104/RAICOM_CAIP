@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FP-FraudSim Risk Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260605_dashboard_v7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260609_threshold_v1" />
   </head>
   <body>
     <div class="shell">
@@ -27,6 +27,13 @@
         <div class="side-status">
           <span id="apiDot" class="dot"></span>
           <span id="apiState">连接中</span>
+        </div>
+        <div class="api-key-box">
+          <label for="apiKeyInput">API Key</label>
+          <div>
+            <input id="apiKeyInput" type="password" placeholder="可选" />
+            <button id="apiKeySaveBtn" class="secondary-btn compact" type="button">保存</button>
+          </div>
         </div>
       </aside>
 
@@ -95,10 +102,13 @@
                 <div><span>图挖掘团伙</span><strong id="overviewGraphCount">--</strong></div>
                 <div><span>高置信精度</span><strong id="overviewGraphPurity">--</strong></div>
                 <div><span>评估记录</span><strong id="overviewEvalCount">--</strong></div>
+                <div><span>GraphSAGE PR-AUC</span><strong id="overviewGraphSagePr">--</strong></div>
               </div>
               <div class="quick-actions">
                 <button id="overviewProfilesBtn" class="secondary-btn" type="button">初始化画像</button>
+                <button id="overviewSimulateBtn" class="secondary-btn" type="button">生成仿真流</button>
                 <button id="overviewRetrainBtn" class="secondary-btn" type="button">轻量重训模型</button>
+                <button id="overviewAdaptiveRetrainBtn" class="secondary-btn" type="button">反馈重训候选</button>
                 <button id="overviewGraphMiningBtn" class="secondary-btn" type="button">挖掘欺诈团伙</button>
               </div>
               <div id="overviewTaskOutput" class="task-output">等待操作</div>
@@ -271,6 +281,36 @@
             </div>
             <div id="modelChart" class="model-chart"></div>
           </div>
+          <div class="panel threshold-panel">
+            <div class="panel-head">
+              <div>
+                <h3>阈值沙盒</h3>
+                <p>基于当前模型测试集评分，实时估算拦截效果与人工审核量</p>
+              </div>
+              <button id="thresholdEvaluateBtn" class="primary-btn" type="button">评估阈值</button>
+            </div>
+            <div class="threshold-controls">
+              <label>
+                <span>人工审核阈值 <strong id="mediumThresholdValue">0.50</strong></span>
+                <input id="mediumThreshold" type="range" min="0.01" max="0.98" step="0.01" value="0.50" />
+              </label>
+              <label>
+                <span>高风险拦截阈值 <strong id="highThresholdValue">0.80</strong></span>
+                <input id="highThreshold" type="range" min="0.02" max="0.99" step="0.01" value="0.80" />
+              </label>
+            </div>
+            <div id="thresholdResult" class="threshold-result">点击评估阈值查看业务影响</div>
+          </div>
+          <div class="panel threshold-panel">
+            <div class="panel-head">
+              <div>
+                <h3>GraphSAGE 旁路实验</h3>
+                <p>图 embedding 独立评估，不直接改变线上决策</p>
+              </div>
+              <span class="pill">Sidecar</span>
+            </div>
+            <div id="graphSageMetrics" class="threshold-result">暂无 GraphSAGE 实验产物</div>
+          </div>
         </section>
 
         <section id="predict" class="view">
@@ -339,6 +379,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260605_dashboard_v7"></script>
+    <script src="/static/app.js?v=20260609_threshold_v1"></script>
   </body>
 </html>

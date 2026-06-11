@@ -240,6 +240,10 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         json.dump(feature_config.to_dict(), f, ensure_ascii=False, indent=2)
     with (out_dir / "metrics.json").open("w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
+    pd.DataFrame({
+        "is_fraud": y_test.to_numpy(dtype="int8"),
+        "risk_score": np.asarray(test_scores, dtype="float32"),
+    }).to_parquet(out_dir / "evaluation_scores.parquet", index=False)
 
     update_leaderboard(Path("models"), metrics)
     print(json.dumps(metrics, ensure_ascii=False, indent=2))

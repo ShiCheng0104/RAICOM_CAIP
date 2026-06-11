@@ -109,6 +109,31 @@ input {
   font-size: 13px;
 }
 
+.api-key-box {
+  display: grid;
+  gap: 7px;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.api-key-box div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.api-key-box input {
+  height: 30px;
+  min-width: 0;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.api-key-box input::placeholder {
+  color: #94a3b8;
+}
+
 .dot {
   width: 9px;
   height: 9px;
@@ -1190,6 +1215,92 @@ textarea {
   background: #fbfcfe;
 }
 
+.threshold-panel {
+  margin-top: 16px;
+}
+
+.threshold-panel .panel-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.threshold-controls {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.threshold-controls label {
+  display: grid;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.threshold-controls label span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.threshold-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.threshold-result {
+  min-height: 150px;
+  padding: 16px;
+  color: var(--muted);
+}
+
+.decision-bar {
+  height: 14px;
+  margin-top: 16px;
+  display: flex;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #eef2f6;
+}
+
+.decision-bar span.pass,
+.decision-legend i.pass {
+  background: var(--success);
+}
+
+.decision-bar span.review,
+.decision-legend i.review {
+  background: #d97706;
+}
+
+.decision-bar span.reject,
+.decision-legend i.reject {
+  background: var(--danger);
+}
+
+.decision-legend {
+  margin-top: 10px;
+  display: flex;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.decision-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.decision-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
 .metric-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1316,6 +1427,10 @@ textarea {
   .metric-card-grid,
   .form-grid,
   .reason-item {
+    grid-template-columns: 1fr;
+  }
+
+  .threshold-controls {
     grid-template-columns: 1fr;
   }
 

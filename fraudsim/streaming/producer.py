@@ -21,6 +21,15 @@ def ensure_topic(bootstrap_servers: str, topic: str, partitions: int = 3) -> Non
     futures[topic].result(timeout=30)
 
 
+def topic_partition_count(bootstrap_servers: str, topic: str) -> int:
+    admin = AdminClient({"bootstrap.servers": bootstrap_servers})
+    metadata = admin.list_topics(topic=topic, timeout=10)
+    topic_meta = metadata.topics.get(topic)
+    if topic_meta is None or topic_meta.error is not None:
+        return 1
+    return max(1, len(topic_meta.partitions))
+
+
 def delivery_report(err: Any, msg: Any) -> None:
     if err is not None:
         print(f"[producer] delivery failed: {err}")
@@ -77,7 +86,7 @@ def run(args: argparse.Namespace) -> None:
                 producer.flush(5)
                 print(f"[producer] sent={sent}")
     if args.emit_flush_markers:
-        emit_flush_markers(producer, topic, args.partitions)
+        emit_flush_markers(producer, topic, topic_partition_count(bootstrap, topic))
     producer.flush()
     print(f"[producer] completed sent={sent}")
 
