@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from typing import Any
 
@@ -30,8 +31,15 @@ def run(args: argparse.Namespace) -> None:
         "enable.auto.commit": False,
     })
     producer = Producer({"bootstrap.servers": bootstrap})
-    scorer = WindowScorer(api_url=api_url, redis_url=redis_url, watermark_seconds=args.watermark_seconds)
+    scorer = WindowScorer(
+        api_url=api_url,
+        redis_url=redis_url,
+        watermark_seconds=args.watermark_seconds,
+        api_key=args.api_key,
+    )
     session = requests.Session()
+    if args.api_key:
+        session.headers.update({"X-API-Key": args.api_key})
     consumer.subscribe([input_topic])
     print(f"[batch-risk] input={input_topic} risk={risk_topic} bootstrap={bootstrap} batch_size={args.batch_size}")
 
@@ -92,6 +100,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--linger-ms", type=int, default=500)
     parser.add_argument("--api-timeout", type=float, default=30.0)
+    parser.add_argument("--api-key", default=os.getenv("FRAUDSIM_API_KEY") or None)
     parser.add_argument("--watermark-seconds", type=int, default=60)
     parser.add_argument("--partitions", type=int, default=3)
     parser.add_argument("--limit", type=int, default=0)

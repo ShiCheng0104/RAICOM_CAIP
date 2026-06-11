@@ -42,13 +42,21 @@ def is_flush_marker(value: str) -> bool:
 
 
 class WindowScorer:
-    def __init__(self, api_url: str, redis_url: str, watermark_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        api_url: str,
+        redis_url: str,
+        watermark_seconds: int = 60,
+        api_key: str | None = None,
+    ) -> None:
         self.api_url = api_url.rstrip("/")
         self.redis_url = redis_url
         self.watermark_seconds = watermark_seconds
         self.max_event_ts = 0.0
         self.redis_client = None
         self.http_session = requests.Session()
+        if api_key:
+            self.http_session.headers.update({"X-API-Key": api_key})
         self.user_events: dict[str, deque] = defaultdict(deque)
         self.device_events: dict[str, deque] = defaultdict(deque)
         self.ip_events: dict[str, deque] = defaultdict(deque)
@@ -138,8 +146,14 @@ class MicroBatchWindowScorer(WindowScorer):
         watermark_seconds: int = 60,
         batch_size: int = 50,
         linger_ms: int = 300,
+        api_key: str | None = None,
     ) -> None:
-        super().__init__(api_url=api_url, redis_url=redis_url, watermark_seconds=watermark_seconds)
+        super().__init__(
+            api_url=api_url,
+            redis_url=redis_url,
+            watermark_seconds=watermark_seconds,
+            api_key=api_key,
+        )
         self.batch_size = max(1, batch_size)
         self.linger_seconds = max(0, linger_ms) / 1000
         self.buffer: list[dict[str, Any]] = []
@@ -194,6 +208,7 @@ def main() -> None:
     scoring_mode = os.getenv("FRAUDSIM_SCORING_MODE", "sync").lower()
     batch_size = int(os.getenv("FRAUDSIM_BATCH_SIZE", "50"))
     linger_ms = int(os.getenv("FRAUDSIM_BATCH_LINGER_MS", "300"))
+    api_key = os.getenv("FRAUDSIM_API_KEY") or None
 
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(int(os.getenv("FRAUDSIM_FLINK_PARALLELISM", "1")))
@@ -219,12 +234,18 @@ def main() -> None:
                 watermark_seconds=watermark_seconds,
                 batch_size=batch_size,
                 linger_ms=linger_ms,
+                api_key=api_key,
             ),
             output_type=Types.STRING(),
         )
     else:
         scored = stream.filter(lambda raw: not is_flush_marker(raw)).map(
-            WindowScorer(api_url=api_url, redis_url=redis_url, watermark_seconds=watermark_seconds),
+            WindowScorer(
+                api_url=api_url,
+                redis_url=redis_url,
+                watermark_seconds=watermark_seconds,
+                api_key=api_key,
+            ),
             output_type=Types.STRING(),
         )
 
