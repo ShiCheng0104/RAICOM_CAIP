@@ -1356,7 +1356,14 @@ async function refreshUserProfiles() {
     state.profileMatched = result.matched || 0;
     const richness = result.sort === "diverse" ? ` · ${result.page_sources} 个来源 · ${result.page_profile_patterns} 类画像` : "";
     setText("profileListCount", `匹配 ${fmt(result.matched, 0)} / ${fmt(result.total, 0)} 位用户${richness}`);
-    setText("profilePageState", `第 ${Math.floor(state.profileOffset / 80) + 1} 页 / 共 ${Math.max(1, Math.ceil(state.profileMatched / 80))} 页`);
+    const currentPage = Math.floor(state.profileOffset / 80) + 1;
+    const totalPages = Math.max(1, Math.ceil(state.profileMatched / 80));
+    setText("profilePageState", `第 ${currentPage} 页 / 共 ${totalPages} 页`);
+    const pageInput = document.getElementById("profilePageInput");
+    if (pageInput) {
+      pageInput.value = currentPage;
+      pageInput.max = totalPages;
+    }
     const prev = document.getElementById("profilePrevBtn");
     const next = document.getElementById("profileNextBtn");
     if (prev) prev.disabled = state.profileOffset <= 0;
@@ -1382,6 +1389,18 @@ async function refreshUserProfiles() {
   } catch (error) {
     list.innerHTML = `<div class="readable-empty"><strong>画像加载失败</strong><p>${escapeHtml(error.message)}</p></div>`;
   }
+}
+
+function jumpToProfilePage() {
+  const input = document.getElementById("profilePageInput");
+  if (!input) return;
+  const totalPages = Math.max(1, Math.ceil(state.profileMatched / 80));
+  const requested = Math.trunc(asNumber(input.value, 1));
+  const page = clamp(requested, 1, totalPages);
+  input.value = page;
+  state.profileOffset = (page - 1) * 80;
+  state.selectedUserProfile = null;
+  refreshUserProfiles();
 }
 
 async function selectUserProfile(userId) {
@@ -1734,6 +1753,10 @@ bind("profilePrevBtn", "click", () => {
 bind("profileNextBtn", "click", () => {
   state.profileOffset += 80;
   refreshUserProfiles();
+});
+bind("profilePageGoBtn", "click", jumpToProfilePage);
+bind("profilePageInput", "keydown", (event) => {
+  if (event.key === "Enter") jumpToProfilePage();
 });
 bind("profileDrawerCloseBtn", "click", closeProfileDrawer);
 bind("profileDrawerBackdrop", "click", closeProfileDrawer);

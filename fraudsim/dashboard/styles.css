@@ -1300,6 +1300,19 @@ textarea {
   cursor: not-allowed;
 }
 
+.profile-page-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-page-jump input {
+  width: 68px;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: center;
+}
+
 .profile-user-row {
   width: 100%;
   display: flex;
@@ -1855,6 +1868,11 @@ textarea {
 
   .profile-search {
     grid-template-columns: 1fr;
+  }
+
+  .profile-pager {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .profile-detail-panel .profile-detail {
