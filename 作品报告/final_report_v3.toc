@@ -1,0 +1,46 @@
+\contentsline {section}{摘要}{I}{section*.1}%
+\contentsline {section}{\numberline {一、}背景分析与破题}{1}{section.1}%
+\contentsline {subsection}{\numberline {（一）}行业背景、社会价值与技术瓶颈}{1}{subsection.1.1}%
+\contentsline {subsection}{\numberline {（二）}破题分析、动机意图与问题挑战}{2}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.}作品定位与总体思路}{2}{subsubsection.1.2.1}%
+\contentsline {subsubsection}{\numberline {2.}问题驱动的技术路线}{3}{subsubsection.1.2.2}%
+\contentsline {subsubsection}{\numberline {3.}评分准则对应关系}{4}{subsubsection.1.2.3}%
+\contentsline {subsubsection}{\numberline {4.}创新动机与工程边界}{5}{subsubsection.1.2.4}%
+\contentsline {section}{\numberline {二、}需求流程与数据分析}{6}{section.2}%
+\contentsline {subsection}{\numberline {（一）}需求场景及诈骗行为特征分析}{6}{subsection.2.1}%
+\contentsline {subsection}{\numberline {（二）}数据集分析}{6}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {1.}多源异构数据设计}{6}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.}统一数据集构建与统计分析}{8}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {3.}正常交易与欺诈场景仿真}{9}{subsubsection.2.2.3}%
+\contentsline {subsubsection}{\numberline {4.}跨时段与跨渠道建模}{11}{subsubsection.2.2.4}%
+\contentsline {subsubsection}{\numberline {5.}数据质量与泄露控制}{11}{subsubsection.2.2.5}%
+\contentsline {subsubsection}{\numberline {6.}多维特征体系}{12}{subsubsection.2.2.6}%
+\contentsline {subsubsection}{\numberline {7.}标签、阈值与风险等级}{13}{subsubsection.2.2.7}%
+\contentsline {section}{\numberline {三、}系统架构与关键技术}{13}{section.3}%
+\contentsline {subsection}{\numberline {（一）}分层系统架构与关键技术}{13}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {1.}框架选型与流式框架}{14}{subsubsection.3.1.1}%
+\contentsline {subsection}{\numberline {（二）}业务逻辑流程设计}{15}{subsection.3.2}%
+\contentsline {subsection}{\numberline {（三）}数据结构设计与组织}{16}{subsection.3.3}%
+\contentsline {subsection}{\numberline {（四）}算法模型和伪代码}{17}{subsection.3.4}%
+\contentsline {subsubsection}{\numberline {1.}算法组合的合理性与先进性}{17}{subsubsection.3.4.1}%
+\contentsline {subsubsection}{\numberline {2.}模型训练与多模型管理}{18}{subsubsection.3.4.2}%
+\contentsline {subsubsection}{\numberline {3.}风险解释与理由码}{20}{subsubsection.3.4.3}%
+\contentsline {subsubsection}{\numberline {4.}诈骗行为建模、图挖掘与团伙溯源}{21}{subsubsection.3.4.4}%
+\contentsline {subsubsection}{\numberline {5.}可视化应用扩展}{22}{subsubsection.3.4.5}%
+\contentsline {section}{\numberline {四、}性能分析及系统展示}{24}{section.4}%
+\contentsline {subsection}{\numberline {（一）}围绕目标的端到端性能分析}{24}{subsection.4.1}%
+\contentsline {subsubsection}{\numberline {1.}准确性：离线模型与业务阈值}{24}{subsubsection.4.1.1}%
+\contentsline {subsubsection}{\numberline {2.}实时性：端到端链路与接口延迟}{26}{subsubsection.4.1.2}%
+\contentsline {subsubsection}{\numberline {3.}接口压测与微批吞吐优化}{27}{subsubsection.4.1.3}%
+\contentsline {subsubsection}{\numberline {4.}可解释性与溯源性：阈值和图分析}{27}{subsubsection.4.1.4}%
+\contentsline {subsection}{\numberline {（二）}消融实验分析}{28}{subsection.4.2}%
+\contentsline {subsection}{\numberline {（三）}系统界面截图与任务自评}{29}{subsection.4.3}%
+\contentsline {subsection}{\numberline {（四）}交付清单与复现保障}{31}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {1.}自动化测试覆盖}{31}{subsubsection.4.4.1}%
+\contentsline {section}{\numberline {五、}创新点分析与总结}{33}{section.5}%
+\contentsline {subsection}{\numberline {（一）}核心创新点分析}{33}{subsection.5.1}%
+\contentsline {subsection}{\numberline {（二）}综合价值与评分响应}{34}{subsection.5.2}%
+\contentsline {subsection}{\numberline {（三）}总结与展望}{34}{subsection.5.3}%
+\contentsline {section}{参考文献}{36}{section*.26}%
+\contentsline {section}{附录}{39}{section*.28}%
+\contentsline {section}{致谢}{42}{section*.34}%

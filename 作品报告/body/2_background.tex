@@ -1,7 +1,20 @@
-\section{数据仿真与特征体系}
+\section{需求流程与数据分析}
 \label{sec:data}
 
-\subsection{多源异构数据设计}
+\subsection{需求场景及诈骗行为特征分析}
+
+正常交易通常具有稳定的设备、IP、时间、金额和收款习惯；诈骗交易则常表现为陌生设备登录、金额突然偏离、短时高频、多账户共享资源、资金集中流向高风险收款方等异常。系统据此将业务需求转换为“事件接入、实时特征提取、多证据融合、双阈值处置、证据链溯源、人工反馈迭代”六个连续步骤，并以低风险放行、中风险复核和高风险拦截作为最终业务输出。
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.98\textwidth]{pic/fraud_decision_logic_image2.png}
+  \caption{一笔交易的诈骗判定、处置与反馈业务流程}
+  \label{fig:fraud_decision_logic}
+\end{figure}
+
+\subsection{数据集分析}
+
+\subsubsection{多源异构数据设计}
 
 赛题一要求参赛团队自建或模拟包含多源异构金融交易数据的仿真环境。受金融隐私、机构安全和标签成本限制，单一公开数据集通常只能覆盖交易、身份、设备或图关系中的一部分。因此，FP-FraudSim没有简单纵向拼接原始文件，而是对八个公开或合成数据源进行``角色化融合''：交易型数据进入统一交易事实表，身份与设备字段进入特征侧表，网络型数据进入异构图，仿真器与反洗钱数据用于补充复杂欺诈模式。PaySim与BankSim提供支付仿真和消费网络\cite{paysim,banksim}，IEEE-CIS与Credit Card Fraud提供高维表格特征和类别不平衡对照\cite{ieeecis,creditcard}，Elliptic与DGraph-Fin提供资金流和金融关系图\cite{elliptic,dgraphfin}，SAML-D与AMLSim提供反洗钱交易及模式生成参考\cite{samld,amlsim}。
 
@@ -35,7 +48,7 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
 
 系统进一步将静态画像和动态事件分离。静态画像记录账户年龄、历史交易量、平均金额、常用设备数、常用IP数、商户投诉率、设备绑定用户数、IP代理/VPN标记等信息；动态事件记录交易时间、金额、渠道、设备、IP、商户和收款方。在线识别时，Flink从Kafka读取动态事件，再从Redis按实体ID补齐画像，使模型输入既包含单笔交易上下文，也包含历史行为基线。
 
-\subsection{统一数据集构建方法}
+\subsubsection{统一数据集构建与统计分析}
 
 数据构建由\path{scripts/scripts/etl}下的四阶段脚本完成。首先，\path{01_normalize.py}读取CSV与NPZ文件，将不同来源映射到统一最小交易语义，并将高维或源专属字段写入特征侧表。其次，\path{02_build_unified_dataset.py}对大数据源进行固定随机种子的确定性抽样，使用来源前缀构造全局唯一ID，将各源时间缩放到2026年1月1日至3月31日，补充渠道、支付方式、设备和IP，并生成画像、异构图、时间切分和流式JSONL。再次，\path{04_inject_fraud_patterns.py}在不覆盖基础集的前提下生成七类欺诈增强样本及证据图边。最后，\path{03_validate_unified_dataset.py}检查主键、标签、时间切分、画像覆盖、图端点和流式文件可解析性。
 
@@ -67,7 +80,7 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
 
 上述规模记录在增强数据集清单中，属于可在比赛环境中复现的MVP确定性采样版本，而非八个来源的全量简单汇总。构建脚本同时支持\texttt{full}模式及按来源配置容量上限，便于在有限资源下开展功能验证，或在更高配置环境中扩大交易量和图边规模。
 
-\subsection{正常交易与欺诈场景仿真}
+\subsubsection{正常交易与欺诈场景仿真}
 
 项目通过\code{scripts/scripts/etl/04\_inject\_fraud\_patterns.py}在基础交易数据上注入更贴近反诈场景的欺诈样本。该脚本保持原始统一数据集不变，输出增强后的\code{fp\_fraudsim\_injected}目录，并按基础集的训练、验证和测试时间边界自动归入新增样本。当前实现覆盖七类欺诈模式：
 
@@ -108,19 +121,19 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   \label{fig:simulation_flow}
 \end{figure}
 
-\subsection{跨时段与跨渠道建模}
+\subsubsection{跨时段与跨渠道建模}
 
 系统使用\code{timestamp}作为事件时间，将小时步、天步、秒偏移、真实日期和图时间步统一映射到共同时间轴。有标签交易按时间排序后以70\%/15\%/15\%划分训练、验证和测试集，未知标签单独保存；这种划分模拟``用过去预测未来''，避免随机切分造成未来分布和同一行为链路泄露。增强集的训练集最晚时间为2026年2月18日03:41:14，验证集最晚时间为2026年3月11日09:15:04，测试集从该边界后继续，划分顺序已由校验脚本核验。
 
 在线侧通过Producer按指定速率回放\code{transaction\_stream.jsonl}。交易渠道字段覆盖App、网页、小程序、POS、二维码、API和网点等入口，支付方式覆盖钱包、银行卡、现金、转账和余额支付，时间特征包含小时、星期、是否周末、是否夜间等变量。Flink作业设置60秒watermark判断迟到事件，并将迟到交易输出到\code{late\_events}主题，体现真实流式场景下乱序和延迟数据处理能力。
 
-\subsection{数据质量与泄露控制}
+\subsubsection{数据质量与泄露控制}
 
 项目使用\code{manifest.json}记录数据版本、随机种子、各来源行数、时间范围和产物路径，使用\code{validation\_report.json}保存自动校验结果。增强集校验结果为通过：830,733个交易ID全部唯一，时间戳无空值，金额无负数，标签仅包含$-1/0/1$；交易中的付款方、商户、设备和IP均可关联到对应画像；2,765,530个图节点ID全部唯一，1,966,057条图边不存在缺失端点；随机抽查10,000条流式事件均可解析为JSON。
 
 为降低数据泄露风险，模型训练仅使用当时可获得的交易、画像、窗口和图统计信息。\code{fraud\_type}、\code{label\_quality}、\code{rule\_score}、切分标记、注入证据，以及由全量标签直接聚合得到的欺诈率和黑名单字段不会作为主模型输入；离线窗口特征按事件时间只利用当前交易之前的历史记录，并与在线Flink窗口保持同名同义。该约束使离线指标更接近真实上线条件。
 
-\subsection{多维特征体系}
+\subsubsection{多维特征体系}
 
 模型输入由离线特征和在线特征共同组成。训练脚本通过\code{fraudsim/features.py}合并交易日志与用户、设备、IP、商户画像，并排除标签泄露字段；\code{fraudsim/window\_features.py}构造与在线一致的短时窗口统计；\code{fraudsim/graph\_features.py}和\code{fraudsim/graph\_mining.py}提供实体图统计与团伙挖掘特征。
 
@@ -149,6 +162,6 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   }
 \end{table}
 
-\subsection{标签、阈值与风险等级}
+\subsubsection{标签、阈值与风险等级}
 
 系统训练目标为\code{is\_fraud}二分类标签。模型输出连续风险分数后，由API根据验证集阈值校准结果生成风险等级和处置动作：低风险交易放行，中风险交易进入人工复核，高风险交易拒绝并写入告警主题。训练过程同时保存\code{evaluation\_scores.parquet}，Dashboard阈值沙盒可调整人工审核阈值和高风险拦截阈值，实时计算放行量、审核量、拦截量、精度、召回、F1、误报率、误拦量和漏过量，使阈值选择从静态配置升级为可量化的业务决策。
