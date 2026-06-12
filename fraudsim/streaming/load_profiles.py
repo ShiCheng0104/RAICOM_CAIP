@@ -27,6 +27,34 @@ def normalize_value(value: Any) -> Any:
     return value
 
 
+def write_frame(
+    client: redis.Redis,
+    frame: pd.DataFrame,
+    key_col: str,
+    prefix: str,
+    batch_size: int,
+) -> int:
+    columns = frame.columns.tolist()
+    try:
+        key_index = columns.index(key_col)
+    except ValueError as exc:
+        raise ValueError(f"Missing key column {key_col!r} for Redis prefix {prefix!r}") from exc
+
+    pipe = client.pipeline(transaction=False)
+    written = 0
+    for values in frame.itertuples(index=False, name=None):
+        entity_id = values[key_index]
+        if pd.isna(entity_id):
+            continue
+        payload = {column: normalize_value(value) for column, value in zip(columns, values)}
+        pipe.set(f"{prefix}:{entity_id}", json.dumps(payload, ensure_ascii=False))
+        written += 1
+        if written % batch_size == 0:
+            pipe.execute()
+    pipe.execute()
+    return written
+
+
 def run(args: argparse.Namespace) -> None:
     config = load_config(args.config)
     ds_dir = dataset_dir(config, args.dataset)
@@ -36,34 +64,12 @@ def run(args: argparse.Namespace) -> None:
     for filename, key_col, prefix in PROFILE_SPECS:
         path = ds_dir / filename
         df = pd.read_parquet(path)
-        pipe = client.pipeline(transaction=False)
-        written = 0
-        for row in df.to_dict(orient="records"):
-            entity_id = row.get(key_col)
-            if entity_id is None:
-                continue
-            payload = {k: normalize_value(v) for k, v in row.items()}
-            pipe.set(f"{prefix}:{entity_id}", json.dumps(payload, ensure_ascii=False))
-            written += 1
-            if written % args.batch_size == 0:
-                pipe.execute()
-        pipe.execute()
+        written = write_frame(client, df, key_col, prefix, args.batch_size)
         print(f"[profiles] {filename} written={written}")
 
     if args.with_graph_features:
         graph_df = build_graph_entity_features(ds_dir, force=args.rebuild_graph_features)
-        pipe = client.pipeline(transaction=False)
-        written = 0
-        for row in graph_df.to_dict(orient="records"):
-            entity_id = row.get("entity_id")
-            if entity_id is None:
-                continue
-            payload = {k: normalize_value(v) for k, v in row.items()}
-            pipe.set(f"profile:graph:{entity_id}", json.dumps(payload, ensure_ascii=False))
-            written += 1
-            if written % args.batch_size == 0:
-                pipe.execute()
-        pipe.execute()
+        written = write_frame(client, graph_df, "entity_id", "profile:graph", args.batch_size)
         print(f"[profiles] graph_entity_features written={written}")
 
 
