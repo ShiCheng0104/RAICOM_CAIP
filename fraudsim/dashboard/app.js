@@ -14,6 +14,15 @@ const state = {
   modelSort: { key: "pr_auc", direction: "desc" },
   fraudRingGraphData: null,
   fraudRingZoom: 1,
+  fraudRingPan: { x: 0, y: 0 },
+  streamGraphData: null,
+  streamGraphZoom: 1,
+  streamGraphPan: { x: 0, y: 0 },
+  profileUsers: [],
+  profileOffset: 0,
+  profileMatched: 0,
+  selectedUserProfile: null,
+  drawerUserId: null,
   selectedMetricsModel: null,
   graphMiningLoading: false,
   thresholdResult: null,
@@ -29,6 +38,17 @@ const FRAUD_RING_VIEWBOX = {
   maxX: 778,
   minY: 42,
   maxY: 378,
+};
+
+const STREAM_GRAPH_VIEWBOX = {
+  width: 720,
+  height: 300,
+  centerX: 360,
+  centerY: 150,
+  minX: 40,
+  maxX: 680,
+  minY: 38,
+  maxY: 262,
 };
 
 const sampleRecord = {
@@ -254,6 +274,8 @@ function saveApiKey() {
 async function refreshAll() {
   const apiDot = document.getElementById("apiDot");
   const apiState = document.getElementById("apiState");
+  const welcomeApiDot = document.getElementById("welcomeApiDot");
+  const welcomeApiState = document.getElementById("welcomeApiState");
   try {
     const [models, metrics, leaderboard, demoActions, graphSage] = await Promise.all([
       api("/models"),
@@ -272,12 +294,23 @@ async function refreshAll() {
     await refreshGraphMining(false);
     apiDot.className = "dot ok";
     apiState.textContent = "API 正常";
+    if (welcomeApiDot) welcomeApiDot.className = "dot ok";
+    if (welcomeApiState) welcomeApiState.textContent = "风险服务连接正常";
     render();
   } catch (error) {
     apiDot.className = "dot bad";
     apiState.textContent = "API 异常";
+    if (welcomeApiDot) welcomeApiDot.className = "dot bad";
+    if (welcomeApiState) welcomeApiState.textContent = "风险服务暂不可用，仍可进入查看";
     document.getElementById("predictResult").textContent = error.message;
   }
+}
+
+function enterDashboard() {
+  const screen = document.getElementById("welcomeScreen");
+  if (!screen) return;
+  screen.classList.add("leaving");
+  window.setTimeout(() => screen.remove(), 360);
 }
 
 function render() {
@@ -694,12 +727,12 @@ async function evaluateThresholds() {
 function graphNodesFromEvent(value) {
   const risk = value.risk_score !== undefined ? `score ${fmt(value.risk_score)}` : "待评分";
   return [
-    { id: "payer", label: value.payer_id || "payer", type: "用户", x: 90, y: 150 },
-    { id: "payee", label: value.payee_id || "payee", type: "收款方", x: 300, y: 74 },
-    { id: "merchant", label: value.merchant_id || "merchant", type: "商户", x: 300, y: 226 },
-    { id: "device", label: value.device_id || "device", type: "设备", x: 510, y: 92 },
-    { id: "ip", label: value.ip_id || "ip", type: "IP", x: 510, y: 210 },
-    { id: "risk", label: value.decision || risk, type: value.risk_level || "risk", x: 650, y: 150 },
+    { id: "payer", entityId: value.payer_id || "payer", label: value.payer_id || "payer", type: "user", x: 90, y: 150 },
+    { id: "payee", entityId: value.payee_id || "payee", label: value.payee_id || "payee", type: "payee", x: 300, y: 74 },
+    { id: "merchant", entityId: value.merchant_id || "merchant", label: value.merchant_id || "merchant", type: "merchant", x: 300, y: 226 },
+    { id: "device", entityId: value.device_id || "device", label: value.device_id || "device", type: "device", x: 510, y: 92 },
+    { id: "ip", entityId: value.ip_id || "ip", label: value.ip_id || "ip", type: "ip", x: 510, y: 210 },
+    { id: "risk", label: value.decision || risk, type: "risk", x: 650, y: 150 },
   ];
 }
 
@@ -710,58 +743,159 @@ function renderGraph(value) {
   if (!svg || !detail || !hint) return;
   const event = value && Object.keys(value).length ? value : sampleRecord;
   const nodes = graphNodesFromEvent(event);
-  const byId = Object.fromEntries(nodes.map((node) => [node.id, node]));
   const edges = [
-    ["payer", "payee", "pay"],
-    ["payer", "merchant", "consume"],
-    ["payer", "device", "uses"],
-    ["payer", "ip", "from"],
-    ["merchant", "risk", "score"],
-    ["device", "risk", "signal"],
-    ["ip", "risk", "signal"],
+    { source: "payer", target: "payee", label: "pay" },
+    { source: "payer", target: "merchant", label: "consume" },
+    { source: "payer", target: "device", label: "uses" },
+    { source: "payer", target: "ip", label: "from" },
+    { source: "merchant", target: "risk", label: "score" },
+    { source: "device", target: "risk", label: "signal" },
+    { source: "ip", target: "risk", label: "signal" },
   ];
+  state.streamGraphData = { nodes, edges };
+  drawInteractiveGraph(svg, state.streamGraphData, "stream");
+  hint.textContent = event.transaction_id || "样例交易";
+  detail.innerHTML = renderStreamGraphDetail(event);
+}
+
+function graphSettings(kind) {
+  if (kind === "stream") {
+    return {
+      viewbox: STREAM_GRAPH_VIEWBOX,
+      zoom: state.streamGraphZoom,
+      pan: state.streamGraphPan,
+      data: state.streamGraphData,
+      zoomLabel: "streamGraphZoomLevel",
+    };
+  }
+  return {
+    viewbox: FRAUD_RING_VIEWBOX,
+    zoom: state.fraudRingZoom,
+    pan: state.fraudRingPan,
+    data: state.fraudRingGraphData,
+    zoomLabel: "fraudRingZoomLevel",
+  };
+}
+
+function graphTransform(kind) {
+  const { viewbox, zoom, pan } = graphSettings(kind);
+  return `translate(${pan.x} ${pan.y}) translate(${viewbox.centerX} ${viewbox.centerY}) scale(${zoom}) translate(-${viewbox.centerX} -${viewbox.centerY})`;
+}
+
+function drawInteractiveGraph(svg, graphData, kind) {
   svg.innerHTML = "";
-  for (const [source, target, label] of edges) {
-    const a = byId[source];
-    const b = byId[target];
+  const settings = graphSettings(kind);
+  setText(settings.zoomLabel, `${Math.round(settings.zoom * 100)}%`);
+  const surface = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  surface.setAttribute("class", "graph-pan-surface");
+  surface.setAttribute("width", settings.viewbox.width);
+  surface.setAttribute("height", settings.viewbox.height);
+  surface.addEventListener("pointerdown", (event) => startGraphPan(event, svg, kind));
+  svg.appendChild(surface);
+  const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  layer.setAttribute("class", `${kind}-graph-layer`);
+  layer.setAttribute("transform", graphTransform(kind));
+  svg.appendChild(layer);
+  const nodes = graphData.nodes || [];
+  const byId = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  for (const edge of graphData.edges || []) {
+    const a = byId[edge.source];
+    const b = byId[edge.target];
+    if (!a || !b) continue;
     const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
     line.setAttribute("x1", a.x);
     line.setAttribute("y1", a.y);
     line.setAttribute("x2", b.x);
     line.setAttribute("y2", b.y);
     line.setAttribute("class", "graph-edge");
-    svg.appendChild(line);
+    layer.appendChild(line);
     const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
     text.setAttribute("x", (a.x + b.x) / 2);
-    text.setAttribute("y", (a.y + b.y) / 2 - 6);
+    text.setAttribute("y", (a.y + b.y) / 2 - 4);
     text.setAttribute("class", "graph-edge-label");
-    text.textContent = label;
-    svg.appendChild(text);
+    text.textContent = edge.label;
+    layer.appendChild(text);
   }
   for (const node of nodes) {
-    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    group.setAttribute("class", `graph-node graph-${node.id}`);
+    const groupNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    groupNode.setAttribute("class", `graph-node draggable-node graph-${node.id} graph-role-${node.role || node.type} graph-type-${node.type}`);
+    groupNode.setAttribute("tabindex", "0");
     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     circle.setAttribute("cx", node.x);
     circle.setAttribute("cy", node.y);
-    circle.setAttribute("r", "34");
+    circle.setAttribute("r", node.role === "center" ? "42" : kind === "stream" ? "34" : "30");
     const type = document.createElementNS("http://www.w3.org/2000/svg", "text");
     type.setAttribute("x", node.x);
     type.setAttribute("y", node.y - 4);
     type.setAttribute("class", "graph-node-type");
-    type.textContent = node.type;
+    type.textContent = nodeTypeLabel(node.type);
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
     label.setAttribute("x", node.x);
-    label.setAttribute("y", node.y + 16);
+    label.setAttribute("y", node.y + 15);
     label.setAttribute("class", "graph-node-label");
-    label.textContent = String(node.label).slice(0, 16);
-    group.appendChild(circle);
-    group.appendChild(type);
-    group.appendChild(label);
-    svg.appendChild(group);
+    label.textContent = String(node.label || "").slice(0, 16);
+    groupNode.append(circle, type, label);
+    groupNode.addEventListener("pointerdown", (event) => startGraphNodeDrag(event, node, svg, kind));
+    layer.appendChild(groupNode);
   }
-  hint.textContent = event.transaction_id || "样例交易";
-  detail.innerHTML = renderStreamGraphDetail(event);
+}
+
+function svgPointer(svg, event) {
+  const point = svg.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  return point.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function startGraphNodeDrag(event, node, svg, kind) {
+  event.preventDefault();
+  event.stopPropagation();
+  const settings = graphSettings(kind);
+  const target = event.currentTarget;
+  const start = svgPointer(svg, event);
+  const origin = { x: node.x, y: node.y };
+  let moved = false;
+  target.classList.add("dragging");
+  const move = (pointerEvent) => {
+    const current = svgPointer(svg, pointerEvent);
+    if (Math.abs(current.x - start.x) + Math.abs(current.y - start.y) > 4) moved = true;
+    node.x = clamp(origin.x + (current.x - start.x) / settings.zoom, settings.viewbox.minX, settings.viewbox.maxX);
+    node.y = clamp(origin.y + (current.y - start.y) / settings.zoom, settings.viewbox.minY, settings.viewbox.maxY);
+    drawInteractiveGraph(svg, settings.data, kind);
+  };
+  const stop = () => {
+    target.classList.remove("dragging");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+    if (!moved && node.type === "user") showUserProfile(node.entityId || node.id);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
+}
+
+function startGraphPan(event, svg, kind) {
+  event.preventDefault();
+  const settings = graphSettings(kind);
+  const start = svgPointer(svg, event);
+  const origin = { ...settings.pan };
+  svg.classList.add("panning");
+  const move = (pointerEvent) => {
+    const current = svgPointer(svg, pointerEvent);
+    settings.pan.x = origin.x + current.x - start.x;
+    settings.pan.y = origin.y + current.y - start.y;
+    drawInteractiveGraph(svg, settings.data, kind);
+  };
+  const stop = () => {
+    svg.classList.remove("panning");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", stop);
+    window.removeEventListener("pointercancel", stop);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", stop);
+  window.addEventListener("pointercancel", stop);
 }
 
 function renderStreamGraphDetail(event) {
@@ -987,98 +1121,24 @@ function renderFraudRingGraph(payload) {
 }
 
 function drawFraudRingSvg(svg, graphData) {
-  svg.innerHTML = "";
-  setText("fraudRingZoomLevel", `${Math.round(state.fraudRingZoom * 100)}%`);
-  const layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  layer.setAttribute("class", "fraud-ring-layer");
-  layer.setAttribute(
-    "transform",
-    `translate(${FRAUD_RING_VIEWBOX.centerX} ${FRAUD_RING_VIEWBOX.centerY}) scale(${state.fraudRingZoom}) translate(-${FRAUD_RING_VIEWBOX.centerX} -${FRAUD_RING_VIEWBOX.centerY})`,
-  );
-  svg.appendChild(layer);
-  const nodes = graphData.nodes || [];
-  const byId = Object.fromEntries(nodes.map((node) => [node.id, node]));
-  for (const edge of graphData.edges || []) {
-    const a = byId[edge.source];
-    const b = byId[edge.target];
-    if (!a || !b) continue;
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", a.x);
-    line.setAttribute("y1", a.y);
-    line.setAttribute("x2", b.x);
-    line.setAttribute("y2", b.y);
-    line.setAttribute("class", "graph-edge");
-    layer.appendChild(line);
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", (a.x + b.x) / 2);
-    text.setAttribute("y", (a.y + b.y) / 2 - 4);
-    text.setAttribute("class", "graph-edge-label");
-    text.textContent = edge.label;
-    layer.appendChild(text);
-  }
-  for (const node of nodes) {
-    const groupNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    groupNode.setAttribute("class", `graph-node draggable-node graph-role-${node.role || node.type}`);
-    groupNode.setAttribute("data-node-id", node.id);
-    groupNode.setAttribute("tabindex", "0");
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("cx", node.x);
-    circle.setAttribute("cy", node.y);
-    circle.setAttribute("r", node.role === "center" ? "42" : "30");
-    const type = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    type.setAttribute("x", node.x);
-    type.setAttribute("y", node.y - 4);
-    type.setAttribute("class", "graph-node-type");
-    type.textContent = nodeTypeLabel(node.type);
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("x", node.x);
-    label.setAttribute("y", node.y + 15);
-    label.setAttribute("class", "graph-node-label");
-    label.textContent = String(node.label || "").slice(0, 16);
-    groupNode.appendChild(circle);
-    groupNode.appendChild(type);
-    groupNode.appendChild(label);
-    groupNode.addEventListener("pointerdown", (event) => startFraudRingDrag(event, node, svg));
-    layer.appendChild(groupNode);
-  }
+  drawInteractiveGraph(svg, graphData, "fraudRing");
 }
 
-function startFraudRingDrag(event, node, svg) {
-  event.preventDefault();
-  const target = event.currentTarget;
-  target.classList.add("dragging");
-  const point = svg.createSVGPoint();
-  const toSvgPoint = (pointerEvent) => {
-    point.x = pointerEvent.clientX;
-    point.y = pointerEvent.clientY;
-    return point.matrixTransform(svg.getScreenCTM().inverse());
-  };
-  const start = toSvgPoint(event);
-  const origin = { x: node.x, y: node.y };
-  const move = (pointerEvent) => {
-    const current = toSvgPoint(pointerEvent);
-    node.x = clamp(origin.x + (current.x - start.x) / state.fraudRingZoom, FRAUD_RING_VIEWBOX.minX, FRAUD_RING_VIEWBOX.maxX);
-    node.y = clamp(origin.y + (current.y - start.y) / state.fraudRingZoom, FRAUD_RING_VIEWBOX.minY, FRAUD_RING_VIEWBOX.maxY);
-    drawFraudRingSvg(svg, state.fraudRingGraphData);
-  };
-  const stop = () => {
-    target.classList.remove("dragging");
-    window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", stop);
-    window.removeEventListener("pointercancel", stop);
-  };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", stop);
-  window.addEventListener("pointercancel", stop);
+function setGraphZoom(kind, nextZoom, resetPan = false) {
+  const isStream = kind === "stream";
+  const data = isStream ? state.streamGraphData : state.fraudRingGraphData;
+  const svg = document.getElementById(isStream ? "graphSvg" : "fraudRingSvg");
+  if (isStream) state.streamGraphZoom = clamp(nextZoom, 0.6, 2.4);
+  else state.fraudRingZoom = clamp(nextZoom, 0.6, 2.4);
+  if (resetPan) {
+    if (isStream) state.streamGraphPan = { x: 0, y: 0 };
+    else state.fraudRingPan = { x: 0, y: 0 };
+  }
+  if (svg && data) drawInteractiveGraph(svg, data, kind);
 }
 
-function setFraudRingZoom(nextZoom) {
-  state.fraudRingZoom = clamp(nextZoom, 0.6, 2.4);
-  setText("fraudRingZoomLevel", `${Math.round(state.fraudRingZoom * 100)}%`);
-  const svg = document.getElementById("fraudRingSvg");
-  if (svg && state.fraudRingGraphData) {
-    drawFraudRingSvg(svg, state.fraudRingGraphData);
-  }
+function setFraudRingZoom(nextZoom, resetPan = false) {
+  setGraphZoom("fraudRing", nextZoom, resetPan);
 }
 
 function zoomFraudRing(delta) {
@@ -1090,6 +1150,16 @@ function handleFraudRingWheel(event) {
   event.preventDefault();
   const step = event.deltaY > 0 ? -0.1 : 0.1;
   zoomFraudRing(step);
+}
+
+function zoomStreamGraph(delta) {
+  setGraphZoom("stream", state.streamGraphZoom + delta);
+}
+
+function handleStreamGraphWheel(event) {
+  if (!state.streamGraphData) return;
+  event.preventDefault();
+  zoomStreamGraph(event.deltaY > 0 ? -0.1 : 0.1);
 }
 
 function readableEvidenceKind(kind) {
@@ -1183,11 +1253,198 @@ function renderGraphMiningDetail(container, group, explanations, codes, evidence
   `;
 }
 
+function profileRadar(profile, graphMining = {}) {
+  const axes = [
+    ["交易活跃", Math.log1p(asNumber(profile.txn_count)) / Math.log1p(200)],
+    ["金额规模", Math.log1p(asNumber(profile.total_amount)) / Math.log1p(200000)],
+    ["设备扩散", asNumber(profile.common_device_count) / 15],
+    ["IP扩散", asNumber(profile.common_ip_count) / 15],
+    ["欺诈历史", asNumber(profile.observed_fraud_rate)],
+    ["图团伙风险", asNumber(graphMining.graph_mining_group_risk_score || profile.risk_history_score)],
+  ].map(([label, value]) => [label, clamp(Number(value), 0, 1)]);
+  const cx = 150;
+  const cy = 145;
+  const radius = 98;
+  const point = (index, scale = 1) => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / axes.length;
+    return [cx + Math.cos(angle) * radius * scale, cy + Math.sin(angle) * radius * scale];
+  };
+  const rings = [0.25, 0.5, 0.75, 1].map((scale) =>
+    `<polygon points="${axes.map((_, index) => point(index, scale).join(",")).join(" ")}"></polygon>`,
+  ).join("");
+  const spokes = axes.map((_, index) => {
+    const [x, y] = point(index);
+    return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"></line>`;
+  }).join("");
+  const labels = axes.map(([label], index) => {
+    const [x, y] = point(index, 1.22);
+    return `<text x="${x}" y="${y}">${escapeHtml(label)}</text>`;
+  }).join("");
+  const values = axes.map(([, value], index) => point(index, value).join(",")).join(" ");
+  return `
+    <svg class="profile-radar" viewBox="0 0 300 290" role="img" aria-label="用户画像雷达图">
+      <g class="radar-grid">${rings}${spokes}</g>
+      <polygon class="radar-value" points="${values}"></polygon>
+      <g class="radar-labels">${labels}</g>
+    </svg>
+  `;
+}
+
+function renderUserProfilePayload(payload) {
+  if (!payload || !payload.profile) {
+    return '<div class="readable-empty"><strong>暂无用户画像</strong><p>请先初始化画像，或选择数据集中存在的用户。</p></div>';
+  }
+  const profile = payload.profile;
+  const graph = payload.graph_mining || {};
+  const risk = Math.max(asNumber(profile.risk_history_score), asNumber(graph.graph_mining_group_risk_score));
+  const riskLabel = risk >= 0.7 ? "高风险" : risk >= 0.4 ? "需关注" : "常规";
+  const flags = [
+    asNumber(profile.is_black_user) ? "历史黑名单" : null,
+    asNumber(profile.observed_fraud_rate) > 0 ? "存在欺诈历史" : null,
+    graph.fraud_group_mining_id ? `关联团伙 ${graph.fraud_group_mining_id}` : null,
+  ].filter(Boolean);
+  return `
+    <div class="profile-hero">
+      <div>
+        <span class="detail-eyebrow">用户画像</span>
+        <h4 class="scroll-value">${escapeHtml(payload.user_id)}</h4>
+        <div class="chip-row">${flags.length ? flags.map((flag) => `<span class="evidence-chip">${escapeHtml(flag)}</span>`).join("") : '<span class="evidence-chip">未命中显著风险标签</span>'}</div>
+      </div>
+      <div class="profile-risk-orb ${risk >= 0.7 ? "high" : risk >= 0.4 ? "medium" : "low"}"><strong>${fmt(risk, 2)}</strong><span>${riskLabel}</span></div>
+    </div>
+    <div class="profile-visual-grid">
+      ${profileRadar(profile, graph)}
+      <div class="profile-metrics">
+        ${renderMetricMini("交易笔数", fmt(asNumber(profile.txn_count), 0))}
+        ${renderMetricMini("累计金额", fmt(asNumber(profile.total_amount), 2))}
+        ${renderMetricMini("历史欺诈率", pct(asNumber(profile.observed_fraud_rate)))}
+        ${renderMetricMini("设备数量", fmt(asNumber(profile.common_device_count), 0))}
+        ${renderMetricMini("IP 数量", fmt(asNumber(profile.common_ip_count), 0))}
+        ${renderMetricMini("账户年龄/天", fmt(asNumber(profile.account_age_days), 0))}
+      </div>
+    </div>
+    <div class="detail-section">
+      <h5>图关系解释</h5>
+      <div class="mini-grid">
+        ${renderMetricMini("团伙编号", graph.fraud_group_mining_id || "未关联")}
+        ${renderMetricMini("团伙风险", fmt(graph.graph_mining_group_risk_score))}
+        ${renderMetricMini("共享设备", fmt(graph.graph_mining_shared_device_count, 0))}
+        ${renderMetricMini("共享 IP", fmt(graph.graph_mining_shared_ip_count, 0))}
+      </div>
+    </div>
+    <div class="detail-section">
+      <h5>基础画像</h5>
+      <dl class="kv compact-kv">
+        <dt>常用国家</dt><dd>${escapeHtml(profile.home_country || "--")}</dd>
+        <dt>首次出现</dt><dd>${escapeHtml(profile.first_seen_time || "--")}</dd>
+        <dt>最后出现</dt><dd>${escapeHtml(profile.last_seen_time || "--")}</dd>
+        <dt>数据来源</dt><dd>${escapeHtml(profile.source_hint || "--")}</dd>
+      </dl>
+    </div>
+  `;
+}
+
+async function refreshUserProfiles() {
+  const list = document.getElementById("profileUserRows");
+  if (!list) return;
+  list.textContent = "正在加载用户画像";
+  const query = document.getElementById("profileSearchInput")?.value.trim() || "";
+  const sort = document.getElementById("profileSortSelect")?.value || "diverse";
+  try {
+    const result = await api(`/profiles/users?limit=80&offset=${state.profileOffset}&query=${encodeURIComponent(query)}&sort=${encodeURIComponent(sort)}&direction=desc`);
+    state.profileUsers = result.users || [];
+    state.profileMatched = result.matched || 0;
+    const richness = result.sort === "diverse" ? ` · ${result.page_sources} 个来源 · ${result.page_profile_patterns} 类画像` : "";
+    setText("profileListCount", `匹配 ${fmt(result.matched, 0)} / ${fmt(result.total, 0)} 位用户${richness}`);
+    const currentPage = Math.floor(state.profileOffset / 80) + 1;
+    const totalPages = Math.max(1, Math.ceil(state.profileMatched / 80));
+    setText("profilePageState", `第 ${currentPage} 页 / 共 ${totalPages} 页`);
+    const pageInput = document.getElementById("profilePageInput");
+    if (pageInput) {
+      pageInput.value = currentPage;
+      pageInput.max = totalPages;
+    }
+    const prev = document.getElementById("profilePrevBtn");
+    const next = document.getElementById("profileNextBtn");
+    if (prev) prev.disabled = state.profileOffset <= 0;
+    if (next) next.disabled = state.profileOffset + 80 >= state.profileMatched;
+    list.innerHTML = "";
+    if (!state.profileUsers.length) {
+      list.innerHTML = '<div class="readable-empty"><strong>未找到用户</strong><p>请调整搜索条件。</p></div>';
+      return;
+    }
+    for (const user of state.profileUsers) {
+      const row = document.createElement("button");
+      row.className = "profile-user-row";
+      row.type = "button";
+      row.dataset.userId = user.user_id;
+      row.innerHTML = `
+        <span><strong>${escapeHtml(user.user_id)}</strong><small>${escapeHtml(user.source_hint || "unknown")} · ${escapeHtml(user.home_country || "--")} · ${fmt(asNumber(user.txn_count), 0)} 笔交易</small></span>
+        <span class="profile-list-risk">${fmt(asNumber(user.risk_history_score), 2)}<small>历史风险</small></span>
+      `;
+      row.addEventListener("click", () => selectUserProfile(user.user_id));
+      list.appendChild(row);
+    }
+    if (state.profileUsers[0]) await selectUserProfile(state.profileUsers[0].user_id);
+  } catch (error) {
+    list.innerHTML = `<div class="readable-empty"><strong>画像加载失败</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function jumpToProfilePage() {
+  const input = document.getElementById("profilePageInput");
+  if (!input) return;
+  const totalPages = Math.max(1, Math.ceil(state.profileMatched / 80));
+  const requested = Math.trunc(asNumber(input.value, 1));
+  const page = clamp(requested, 1, totalPages);
+  input.value = page;
+  state.profileOffset = (page - 1) * 80;
+  state.selectedUserProfile = null;
+  refreshUserProfiles();
+}
+
+async function selectUserProfile(userId) {
+  const detail = document.getElementById("profileDetail");
+  document.querySelectorAll(".profile-user-row").forEach((row) => row.classList.toggle("selected", row.dataset.userId === userId));
+  if (detail) detail.innerHTML = '<div class="profile-loading"><div class="spinner"></div><span>正在构建用户画像</span></div>';
+  try {
+    state.selectedUserProfile = await api(`/profiles/users/${encodeURIComponent(userId)}`);
+    if (detail) detail.innerHTML = renderUserProfilePayload(state.selectedUserProfile);
+  } catch (error) {
+    if (detail) detail.innerHTML = `<div class="readable-empty"><strong>画像不可用</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+async function showUserProfile(userId) {
+  if (!userId) return;
+  const drawer = document.getElementById("profileDrawer");
+  const backdrop = document.getElementById("profileDrawerBackdrop");
+  const detail = document.getElementById("profileDrawerDetail");
+  state.drawerUserId = userId;
+  drawer?.classList.add("open");
+  drawer?.setAttribute("aria-hidden", "false");
+  backdrop?.classList.remove("hidden");
+  if (detail) detail.innerHTML = '<div class="profile-loading"><div class="spinner"></div><span>正在构建用户画像</span></div>';
+  try {
+    const payload = await api(`/profiles/users/${encodeURIComponent(userId)}`);
+    if (state.drawerUserId === userId && detail) detail.innerHTML = renderUserProfilePayload(payload);
+  } catch (error) {
+    if (detail) detail.innerHTML = `<div class="readable-empty"><strong>画像不可用</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function closeProfileDrawer() {
+  document.getElementById("profileDrawer")?.classList.remove("open");
+  document.getElementById("profileDrawer")?.setAttribute("aria-hidden", "true");
+  document.getElementById("profileDrawerBackdrop")?.classList.add("hidden");
+}
+
 function switchView(name) {
   const titles = {
     overview: ["总览", "模型切换、系统能力和核心操作入口"],
     stream: ["实时", "查看 Kafka 风险结果并提交人工审核反馈"],
     graphMining: ["图挖掘", "从共享设备、IP、商户和收款链路中识别疑似团伙"],
+    profiles: ["用户画像", "浏览行为画像并解释用户风险与团伙关系"],
     models: ["模型", "发现、加载和重载可插拔模型产物"],
     metrics: ["指标", "当前模型指标、阈值校准和 leaderboard"],
     predict: ["试算", "表单化输入单笔交易并计算风险"],
@@ -1196,6 +1453,7 @@ function switchView(name) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === name));
   document.getElementById("viewTitle").textContent = (titles[name] || titles.overview)[0];
   document.getElementById("viewSubtitle").textContent = (titles[name] || titles.overview)[1];
+  if (name === "profiles" && !state.profileUsers.length) refreshUserProfiles();
 }
 
 function renderDemoStatus(run, outputId = "overviewTaskOutput") {
@@ -1240,6 +1498,11 @@ async function pollDemoRun(runId, action, outputId = "overviewTaskOutput") {
   if (run.status === "succeeded" && action === "replay_stream") {
     document.getElementById("topicSelect").value = "risk_results";
     await refreshStream();
+  }
+  if (run.status === "succeeded" && action === "load_profiles") {
+    state.profileUsers = [];
+    await refreshUserProfiles();
+    switchView("profiles");
   }
   if (run.status === "succeeded" && (action === "retrain_logistic" || action === "adaptive_retrain")) {
     await refreshAll();
@@ -1461,8 +1724,48 @@ bind("overviewGraphMiningBtn", "click", () => runDemoAction("graph_mining", "ove
 bind("graphRefreshBtn", "click", () => refreshGraphMining(true));
 bind("fraudRingZoomOutBtn", "click", () => zoomFraudRing(-0.15));
 bind("fraudRingZoomInBtn", "click", () => zoomFraudRing(0.15));
-bind("fraudRingZoomResetBtn", "click", () => setFraudRingZoom(1));
+bind("fraudRingZoomResetBtn", "click", () => setFraudRingZoom(1, true));
 bind("fraudRingSvg", "wheel", handleFraudRingWheel);
+bind("streamGraphZoomOutBtn", "click", () => zoomStreamGraph(-0.15));
+bind("streamGraphZoomInBtn", "click", () => zoomStreamGraph(0.15));
+bind("streamGraphZoomResetBtn", "click", () => setGraphZoom("stream", 1, true));
+bind("graphSvg", "wheel", handleStreamGraphWheel);
+bind("profileRefreshBtn", "click", refreshUserProfiles);
+bind("profileSearchBtn", "click", () => {
+  state.profileOffset = 0;
+  refreshUserProfiles();
+});
+bind("profileSearchInput", "keydown", (event) => {
+  if (event.key === "Enter") {
+    state.profileOffset = 0;
+    refreshUserProfiles();
+  }
+});
+bind("profileSortSelect", "change", () => {
+  state.profileOffset = 0;
+  state.selectedUserProfile = null;
+  refreshUserProfiles();
+});
+bind("profilePrevBtn", "click", () => {
+  state.profileOffset = Math.max(0, state.profileOffset - 80);
+  refreshUserProfiles();
+});
+bind("profileNextBtn", "click", () => {
+  state.profileOffset += 80;
+  refreshUserProfiles();
+});
+bind("profilePageGoBtn", "click", jumpToProfilePage);
+bind("profilePageInput", "keydown", (event) => {
+  if (event.key === "Enter") jumpToProfilePage();
+});
+bind("profileDrawerCloseBtn", "click", closeProfileDrawer);
+bind("profileDrawerBackdrop", "click", closeProfileDrawer);
+bind("profileDrawerOpenPageBtn", "click", async () => {
+  const userId = state.drawerUserId;
+  closeProfileDrawer();
+  switchView("profiles");
+  if (userId) await selectUserProfile(userId);
+});
 bind("overviewActivateModelBtn", "click", async () => {
   const selector = document.getElementById("overviewModelSelect");
   const modelName = selector && selector.value;
@@ -1480,6 +1783,7 @@ bind("reloadBtn", "click", async () => {
 bind("sampleBtn", "click", () => setSampleForm(sampleRecord));
 bind("predictBtn", "click", predict);
 bind("thresholdEvaluateBtn", "click", evaluateThresholds);
+bind("enterDashboardBtn", "click", enterDashboard);
 bind("mediumThreshold", "input", updateThresholdLabels);
 bind("highThreshold", "input", updateThresholdLabels);
 
