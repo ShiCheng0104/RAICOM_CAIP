@@ -37,6 +37,10 @@
 \contentsline {subsection}{\numberline {（三）}系统界面截图与任务自评}{29}{subsection.4.3}%
 \contentsline {subsection}{\numberline {（四）}交付清单与复现保障}{31}{subsection.4.4}%
 \contentsline {subsubsection}{\numberline {1.}自动化测试覆盖}{31}{subsubsection.4.4.1}%
-\contentsline {section}{参考文献}{33}{section*.25}%
-\contentsline {section}{附录}{36}{section*.27}%
-\contentsline {section}{致谢}{39}{section*.33}%
+\contentsline {section}{\numberline {五、}创新点分析与总结}{33}{section.5}%
+\contentsline {subsection}{\numberline {（一）}核心创新点分析}{33}{subsection.5.1}%
+\contentsline {subsection}{\numberline {（二）}综合价值与评分响应}{34}{subsection.5.2}%
+\contentsline {subsection}{\numberline {（三）}总结与展望}{34}{subsection.5.3}%
+\contentsline {section}{参考文献}{36}{section*.26}%
+\contentsline {section}{附录}{39}{section*.28}%
+\contentsline {section}{致谢}{42}{section*.34}%

@@ -58,27 +58,44 @@ FP-FraudSim以\texttt{transaction\_log.parquet}为核心交易事实表，字段
   \centering
   \caption{FP-FraudSim增强数据集的实际组成}
   \label{tab:dataset_composition}
-  \renewcommand\arraystretch{1.4}
-  \setlength{\tabcolsep}{5pt}
+  \renewcommand\arraystretch{1.42}
+  \setlength{\tabcolsep}{4.5pt}
   {\songti\zihao{5}
   \arrayrulecolor{tableline}
-  \rowcolors{2}{tablealt}{white}
-  \begin{tabularx}{0.94\textwidth}{>{\raggedright\arraybackslash}X>{\raggedleft\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{5.1cm}}
+  \begin{tabularx}{0.95\textwidth}{
+    >{\centering\arraybackslash}p{1.6cm}
+    >{\raggedright\arraybackslash}X
+    >{\raggedleft\arraybackslash}p{1.9cm}
+    >{\raggedright\arraybackslash}X
+    >{\raggedleft\arraybackslash}p{1.9cm}}
     \rowcolor{tablehead}
-    \color{white}\bfseries 数据产物或属性 & \color{white}\bfseries 数量 & \color{white}\bfseries 说明 \\
+    \color{white}\bfseries 分类 &
+    \color{white}\bfseries 指标 &
+    \color{white}\bfseries 数量 &
+    \color{white}\bfseries 指标 &
+    \color{white}\bfseries 数量 \\
     \specialrule{0.8pt}{0pt}{0pt}
-    统一交易主表 & 830,733笔 & 含810,133笔基础融合交易和20,600笔七类注入交易 \\
-    欺诈/正常/无标签交易 & 67,066 / 747,667 / 16,000笔 & 有标签部分欺诈率为8.23\% \\
-    用户/商户画像 & 639,656 / 65,179条 & 从交易实体与聚合统计构建 \\
-    设备/IP画像 & 269,211 / 182,571条 & 支撑共享环境和异常终端识别 \\
-    图节点/图边 & 2,765,530 / 1,966,057条 & 融合交易派生边、公开图源与注入证据边 \\
-    训练/验证/测试/无标签集 & 566,795 / 124,289 / 123,649 / 16,000笔 & 有标签样本严格按事件时间切分 \\
+    \rowcolor{tablealt}
+    \textbf{交易规模} & 统一交易总量 & 830,733笔 & 基础融合交易 & 810,133笔 \\
+    \rowcolor{tablealt}
+      & 七类注入交易 & 20,600笔 & 有标签欺诈率 & 8.23\% \\
+    \textbf{标签结构} & 欺诈交易 & 67,066笔 & 正常交易 & 747,667笔 \\
+      & 无标签交易 & 16,000笔 & 有标签交易 & 814,733笔 \\
+    \rowcolor{tablealt}
+    \textbf{实体画像} & 用户画像 & 639,656条 & 商户画像 & 65,179条 \\
+    \rowcolor{tablealt}
+      & 设备画像 & 269,211条 & IP画像 & 182,571条 \\
+    \textbf{关系图谱} & 图节点 & 2,765,530个 & 图边 & 1,966,057条 \\
+    \rowcolor{tablealt}
+    \textbf{时间切分} & 训练集 & 566,795笔 & 验证集 & 124,289笔 \\
+    \rowcolor{tablealt}
+      & 测试集 & 123,649笔 & 无标签集 & 16,000笔 \\
     \specialrule{0.8pt}{0pt}{0pt}
   \end{tabularx}
   }
 \end{table}
 
-上述规模记录在增强数据集清单中，属于可在比赛环境中复现的MVP确定性采样版本，而非八个来源的全量简单汇总。构建脚本同时支持\texttt{full}模式及按来源配置容量上限，便于在有限资源下开展功能验证，或在更高配置环境中扩大交易量和图边规模。
+统一交易主表由基础融合交易与七类注入交易共同组成；用户、商户、设备和IP画像由交易实体及聚合统计构建；关系图谱融合交易派生边、公开图源与注入证据边。有标签样本严格按事件时间划分为训练、验证和测试集，无标签样本单独保留。上述规模记录在增强数据集清单中，属于可在比赛环境中复现的MVP确定性采样版本，而非八个来源的全量简单汇总。构建脚本同时支持\texttt{full}模式及按来源配置容量上限，便于在有限资源下开展功能验证，或在更高配置环境中扩大交易量和图边规模。
 
 \subsubsection{正常交易与欺诈场景仿真}
 
